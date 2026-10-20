@@ -152,6 +152,11 @@ def load_csv(name):
     return scaled(d, SCALE_COLS[name]) if name in SCALE_COLS else d
 
 # ----------------------------------------------------------------------------- sidebar: the client's costs
+pdf_f = DATA / "maya_v2_summary.pdf"
+if pdf_f.exists():
+    st.sidebar.download_button("Download one-page summary (PDF)", pdf_f.read_bytes(), file_name="Maya_v2_summary.pdf",
+                               mime="application/pdf", use_container_width=True,
+                               help="Results and method on one page, refreshed by the daily run (100 MW placeholder size).")
 st.sidebar.divider()
 st.sidebar.header("Cost scenario")
 st.sidebar.caption("What-if pricing for the cost tables. Real-price results (CAISO day-ahead and real-time, PACE) are shown "
@@ -181,8 +186,8 @@ st.caption("Calibrated buy-ahead forecasts for PacifiCorp East demand and Milfor
            "Every forecast uses only what is known at the buy deadline (10 am Mountain the day before). "
            f"MWh and dollar figures are shown for {UNIT_NOTE}.")
 
-tab_buy, tab_track, tab_bt, tab_save, tab_risk, tab_how = st.tabs(
-    ["Tomorrow's buy", "Live track record", "Maya vs PACE", "What it would have saved", "Risk score", "How it works"])
+tab_buy, tab_shift, tab_track, tab_bt, tab_save, tab_risk, tab_how = st.tabs(
+    ["Tomorrow's buy", "Shift load", "Live track record", "Maya vs PACE", "What it would have saved", "Risk score", "How it works"])
 
 # ============================================================================= TOMORROW
 with tab_buy:
@@ -280,6 +285,53 @@ with tab_buy:
                          hide_index=True, use_container_width=True, height=320)
             st.download_button("Download the bid ladder (CSV)", lad.to_csv(index=False), file_name=f"maya_bid_ladder_{bday:%Y-%m-%d}.csv")
         st.caption(f"Run {S['run_utc']} UTC. Weather: {S['weather']}. Net load = PACE demand minus Milford-area renewable output.")
+
+# ============================================================================= SHIFT LOAD
+with tab_shift:
+    sb_f = DATA / "shift_backtest.csv"
+    if SD is None or "exp_price" not in SD or live is None or not sb_f.exists():
+        st.info("Run `python pipeline/strategies.py` to build the load-shifting data.")
+    else:
+        st.markdown("If some of Maui Hiva's load is flexible (pumping, charging, cooling, batch processes), moving it from the "
+                    "hours expected to be expensive into the hours expected to be cheap lowers the day-ahead bill. The expected "
+                    "price for each hour is the average day-ahead price at that hour over the last 7 days, all published before "
+                    "the buy deadline. On May to Oct 2026 prices it ranked the hours of the next day with a correlation of 0.86.")
+        c1, c2 = st.columns(2)
+        flex = c1.number_input("Flexible load Maui Hiva can move, MW", min_value=0.0, value=5.0, step=1.0,
+                               help="Power that can run at a different hour of the same day without changing the day's total use.")
+        kh = c2.slider("Hours to move it out of (and into)", 1, 6, 4)
+        bday = pd.Timestamp(live["summary"]["buy_day"])
+        T2 = SD.reindex(buy_hours := pd.date_range(bday + pd.Timedelta(hours=7), periods=24, freq="h"))
+        if T2.exp_price.notna().sum() >= 20:
+            e = T2.exp_price.astype(float)
+            hi, lo = e.nlargest(kh).index, e.nsmallest(kh).index
+            save_tmr = flex * (e[hi].sum() - e[lo].sum())
+            x = local(T2.index)
+            colors = ["#d1443a" if t in hi else ("#1e9e5a" if t in lo else "#c9c9c9") for t in T2.index]
+            fig = go.Figure(go.Bar(x=x, y=e, marker_color=colors, hovertemplate="%{x|%a %I %p}: $%{y:.0f}/MWh<extra></extra>"))
+            fig.update_layout(height=320, margin=dict(l=10, r=10, t=30, b=10), yaxis_title="Expected day-ahead price, $/MWh",
+                              title=f"{bday:%a %b %d}: move load out of the red hours and into the green hours")
+            st.plotly_chart(fig, use_container_width=True)
+            k1, k2, k3 = st.columns(3)
+            kpi(k1, "Move out of", ", ".join(f"{t:%I %p}".lstrip("0") for t in sorted(local(hi))), "Mountain time, hour ending")
+            kpi(k2, "Move into", ", ".join(f"{t:%I %p}".lstrip("0") for t in sorted(local(lo))), "Mountain time, hour ending")
+            kpi(k3, "Expected saving for the day", money(save_tmr), f"{flex:,.0f} MW x {kh} hours moved", C_BUY)
+        SB = pd.read_csv(sb_f, parse_dates=["day"])
+        plan, hind = SB[f"plan_k{kh}"] * flex, SB[f"hindsight_k{kh}"] * flex
+        st.subheader(f"What this would have saved since {SB.day.min():%b %d}")
+        k1, k2, k3 = st.columns(3)
+        kpi(k1, "Saved by following the plan", money(plan.sum()), f"{len(SB)} days; {money(plan.mean())} per day on average", C_BUY)
+        kpi(k2, "Upper bound with perfect hindsight", money(hind.sum()), f"the plan captured {plan.sum() / hind.sum() * 100:.0f}% of it")
+        kpi(k3, "Days the plan saved money", f"{(plan > 0).mean() * 100:.0f}%", f"worst day {money(plan.min())}, best day {money(plan.max())}")
+        fig = go.Figure()
+        fig.add_bar(x=SB.day, y=hind, name="Perfect hindsight", marker_color="#d9d9d9")
+        fig.add_bar(x=SB.day, y=plan, name="Maya plan", marker_color=C_BUY)
+        fig.update_layout(barmode="overlay", height=300, margin=dict(l=10, r=10, t=30, b=10), yaxis_title="$ saved per day",
+                          legend=dict(orientation="h", y=1.12))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Assumes the flexible load can run at any hour of the same day with no extra cost or rebound, and that Maui Hiva's "
+                   "purchases are too small to move prices. Savings are at the day-ahead prices that actually cleared. "
+                   "Spike risk was tested as an extra signal for this ranking and did not improve it.")
 
 # ============================================================================= LIVE TRACK RECORD
 with tab_track:
@@ -466,10 +518,19 @@ with tab_save:
         nf, pc = T.set_index("key").loc["persistence"], T.set_index("key").loc["pace"]
         k1, k2, k3 = st.columns(3)
         kpi(k1, "Bill with perfect foresight", money(perfect["bill"]), f"average {money(perfect['bill'] / perfect['mwh'])}/MWh")
-        kpi(k2, f"Best Maya option vs no forecast", money(nf["Power bill"] - best["Power bill"]) + " saved",
-            f"{best.Strategy.split(' (')[0]}; short {best['Hours short %']:.1f}% of hours vs {nf['Hours short %']:.0f}%", C_BUY)
-        kpi(k3, "Best Maya option vs PACE's number", money(pc["Power bill"] - best["Power bill"]) + " saved",
-            f"MWh bought short: {fmt(best['MWh bought short'])} vs {fmt(pc['MWh bought short'])}")
+        ci_f = DATA / "savings_ci.csv"
+        CI = pd.read_csv(ci_f).set_index(["maya", "baseline"]) if ci_f.exists() else None
+
+        def ci_txt(base):
+            if CI is None or (best.key, base) not in CI.index:
+                return ""
+            r = CI.loc[(best.key, base)]
+            return (f"90% range {money(r.saved_lo * SCALE)} to {money(r.saved_hi * SCALE)}; "
+                    f"ahead in {r.prob_positive * 100:.1f}% of resamples. ")
+        kpi(k2, f"{best.Strategy.split(' (')[0]} vs no forecast", money(nf["Power bill"] - best["Power bill"]) + " saved",
+            ci_txt("persistence") + f"Short {best['Hours short %']:.1f}% of hours vs {nf['Hours short %']:.0f}%.", C_BUY)
+        kpi(k3, f"{best.Strategy.split(' (')[0]} vs PACE's number", money(pc["Power bill"] - best["Power bill"]) + " saved",
+            ci_txt("pace") + f"MWh bought short: {fmt(best['MWh bought short'])} vs {fmt(pc['MWh bought short'])}.")
         show = T.drop(columns=["key"]).copy()
         for c in ["Power bill", "vs perfect foresight", "vs no forecast"]:
             show[c] = show[c].map(lambda v: f"${v:,.0f}" if v >= 0 else f"-${-v:,.0f}")
@@ -477,7 +538,9 @@ with tab_save:
             show[c] = show[c].round(1 if SCALE != 1.0 else 0)
         st.dataframe(show, hide_index=True, use_container_width=True)
         st.caption("Negative = cheaper. On ordinary days the strategies differ by cents per MWh; the real gap is in how often each one "
-                   "is caught short, which is what decides the bill on a spike day. The days below show that.")
+                   "is caught short, which is what decides the bill on a spike day. The days below show that. "
+                   "90% ranges come from a day-block bootstrap: 4,000 resamples of whole buy days, so spike days stay intact. "
+                   "They are wide because day-ahead prices for PACE only exist since May 2026.")
 
         st.subheader("Spike days")
         S["spread"] = S.rt - S.da
@@ -564,6 +627,19 @@ with tab_risk:
 
 # ============================================================================= HOW IT WORKS
 with tab_how:
+    rl = LIVE / "retrain_log.csv"
+    mv = ROOT.parent / "pipeline" / "models" / "lag48" / "model_version.txt"
+    st.subheader("Model in use")
+    st.markdown(f"**{mv.read_text().strip() if mv.exists() else 'v2.0 (trained 2019, 2021-2025)'}**")
+    if rl.exists():
+        RL = pd.read_csv(rl)
+        st.dataframe(RL.rename(columns={"checked_utc": "Checked (UTC)", "holdout_start": "Test from", "holdout_end": "Test to",
+                                        "champion_demand_pinball": "Current model error", "challenger_demand_pinball": "Retrained model error",
+                                        "demand_gain_pct": "Improvement %", "decision": "Decision"})
+                     [["Checked (UTC)", "Test from", "Test to", "Current model error", "Retrained model error", "Improvement %", "Decision"]]
+                     .iloc[::-1], hide_index=True, use_container_width=True)
+        st.caption("Error = demand pinball loss (average quantile loss, MWh) on held-out days. Lower is better.")
+    st.divider()
     st.markdown("""
 **The question.** Maui Hiva buys power the day before. Buying short means paying same-day prices for the gap, which costs
 far more than carrying a small surplus. So Maya v2 answers "how much should we buy?", not "what is the single most likely number?".
@@ -587,12 +663,21 @@ P98 on Green days, is bid at a limit equal to the expected real-time price for t
 hour's spike risk times a typical spike premium. It is bought only when day-ahead clears at or below that limit. At real May to
 Oct 2026 prices this was the best option tested (-\\$0.20/MWh vs perfect foresight, short on 3.0% of hours).
 
-**6. Sized to Maui Hiva.** Every MWh and dollar figure can be shown at Maui Hiva's own size (sidebar), assuming its hourly
+**6. Load shifting.** Expected day-ahead price per hour = the same hour's average day-ahead price over the last 7 days (known
+at the deadline). The Shift load tab moves flexible MW out of tomorrow's most expensive expected hours into the cheapest ones.
+On May to Oct 2026 prices, moving 1 MW for 4 hours a day saved about \\$108 per day, 92% of the perfect-hindsight value.
+
+**7. Sized to Maui Hiva.** Every MWh and dollar figure can be shown at Maui Hiva's own size (sidebar), assuming its hourly
 pattern follows PACE's net load. Replace the 100 MW placeholder with their real average load, or their meter data later.
 
-**7. Live.** A daily job pulls PACE demand from EIA (free API) and ECMWF forecasts from Open-Meteo, rebuilds the Milford renewable
+**8. Live.** A daily job pulls PACE demand from EIA (free API) and ECMWF forecasts from Open-Meteo, rebuilds the Milford renewable
 estimate, forecasts the next buy day, recalibrates, and scores yesterday. The track record tab is that job run over every day since
 the training data ends.
+
+**9. Monthly retraining.** On the 1st of each month a challenger model is trained on all data up to 45 days ago and compared
+with the current model on those last 45 days, which neither has seen. It replaces the current model only if its error is at
+least 1% lower on demand and no worse on renewable. Past forecasts are archived as issued and never recomputed, so a new model
+cannot rewrite the track record.
 
 **Data and limits**
 - PACE demand and PACE's day-ahead forecast: EIA-930, hourly. EIA posts PACE's forecast shortly before the day, so it is a benchmark, not an input.

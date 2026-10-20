@@ -1,0 +1,32 @@
+# Monthly champion / challenger retrain: 1st of each month, 17:30 UTC (after the daily forecast run).
+# Promotes a retrained model only if it beats the current one on the last 45 days that neither has seen.
+name: Maya v2 monthly retrain
+on:
+  schedule:
+    - cron: "30 17 1 * *"
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: daily-forecast
+  cancel-in-progress: false
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r pipeline/requirements.txt
+      - run: python pipeline/retrain.py
+      - name: Commit the result
+        run: |
+          git config user.name "maya-bot"
+          git config user.email "maya-bot@users.noreply.github.com"
+          git add live/retrain_log.csv pipeline/models/lag48/
+          git diff --cached --quiet || git commit -m "Monthly retrain check $(date -u +%Y-%m-%d)"
+          git pull --rebase --autostash origin main
+          git push

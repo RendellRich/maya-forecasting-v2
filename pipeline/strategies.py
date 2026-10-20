@@ -134,6 +134,58 @@ def fit_production(X, y):
             "base_rate": float(y[ok].mean()), "spike_usd": SPIKE_USD, "trained_through": str(X.index[ok].max())}
 
 
+# ------------------------------- load shifting -----------------------------------------------------
+def expected_da(da, index, days=7, lag_h=24):
+    """Expected day-ahead price per hour, known at the buy deadline: mean of the same hour's day-ahead price over the
+    7 days ending 24 h earlier (day-ahead results for the day before the buy day are already published by then).
+    Ranks the hours within a day with a correlation of about 0.86 on May-Oct 2026."""
+    full = da.reindex(pd.date_range(da.index.min(), max(da.index.max(), index.max()), freq="h"))
+    x = full.shift(lag_h)
+    return x.groupby(x.index.hour).transform(lambda v: v.rolling(days, min_periods=3).mean()).reindex(index)
+
+
+def shift_backtest(s, max_k=6):
+    """Per MW of flexible load: $ saved per day by moving it out of the k most expensive expected hours into the k
+    cheapest expected hours of the same buy day, at the day-ahead prices that actually cleared. Also the perfect-
+    hindsight value (same move using the actual prices) as an upper bound."""
+    k = s[["exp_price", "da"]].dropna().copy()
+    k["day"] = (k.index - pd.Timedelta(hours=7)).normalize()
+    k = k[k.groupby("day").da.transform("count") == 24]
+    rows = []
+    for day, g in k.groupby("day"):
+        r = {"day": day.date()}
+        for K in range(1, max_k + 1):
+            r[f"plan_k{K}"] = g.nlargest(K, "exp_price").da.sum() - g.nsmallest(K, "exp_price").da.sum()
+            r[f"hindsight_k{K}"] = g.nlargest(K, "da").da.sum() - g.nsmallest(K, "da").da.sum()
+        rows.append(r)
+    return pd.DataFrame(rows)
+
+
+# ------------------------------- uncertainty ------------------------------------------------------
+def savings_ci(s, n_boot=4000, seed=7):
+    """90% ranges by day-block bootstrap: resample whole buy days with replacement, so spike days stay intact.
+    Returns totals at all-of-PACE scale (the app rescales) and $/MWh."""
+    k = s[s.da.notna() & s.rt.notna() & s.actual.notna()].copy()
+    k["day"] = (k.index - pd.Timedelta(hours=7)).normalize()
+    cols = ["persistence", "pace", "maya_P95", "maya_day_rule", "maya_ladder"]
+    daily = pd.DataFrame({c: ((k.rt - k.da) * (k.actual - k[c])).groupby(k.day).sum() for c in cols})   # extra $ vs perfect
+    daily["mwh"] = k.actual.groupby(k.day).sum()
+    daily = daily.dropna()
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(daily), size=(n_boot, len(daily)))
+    rows = []
+    for maya in ["maya_ladder", "maya_day_rule"]:
+        for base in ["persistence", "pace"]:
+            diff = (daily[base] - daily[maya]).values                    # $ saved by Maya vs base, per day
+            boot = diff[idx].sum(axis=1)
+            boot_mwh = (diff[idx].sum(axis=1)) / daily.mwh.values[idx].sum(axis=1)
+            rows.append(dict(maya=maya, baseline=base, days=len(daily), saved_total=diff.sum(),
+                             saved_lo=np.quantile(boot, 0.05), saved_hi=np.quantile(boot, 0.95),
+                             saved_per_MWh=diff.sum() / daily.mwh.sum(), per_MWh_lo=np.quantile(boot_mwh, 0.05),
+                             per_MWh_hi=np.quantile(boot_mwh, 0.95), prob_positive=(boot > 0).mean()))
+    return pd.DataFrame(rows)
+
+
 # ------------------------------- strategies -------------------------------------------------------
 def expected_rt(X, prob, spike_premium):
     """Expected real-time price for the hour: recent normal + chance of a spike x typical spike premium."""
@@ -190,6 +242,7 @@ def build(write=True):
     spike_premium = float((rt.reindex(X.index) - X.rt_norm)[pre].median()) if pre.sum() else 40.0
     s = add_strategies(f, X, prob, thr, spike_premium)
     s["da"], s["rt"] = da.reindex(s.index), rt.reindex(s.index)
+    s["exp_price"] = expected_da(da, s.index)
     s["maya_ladder"] = s.ladder_block1 + np.where(s.da <= s.ladder_limit, s.ladder_block2, 0)   # quantity actually cleared
     s.loc[s.da.isna(), "maya_ladder"] = np.nan
     s["spike_actual"] = y
@@ -223,11 +276,14 @@ def build(write=True):
         s.to_parquet(os.path.join(OUT, "strategies_hourly.parquet"))
         # small copy for the dashboard: 2026 hours from the start of EDAM pricing on (committed daily by the job)
         app_cols = ["actual", "perfect", "persistence", "pace", "maya_P95", "maya_day_rule", "maya_hour_rule", "maya_ladder",
-                    "ladder_block1", "ladder_block2", "ladder_limit", "spike_prob", "high_risk_hour", "spike_actual", "da", "rt"]
+                    "ladder_block1", "ladder_block2", "ladder_limit", "spike_prob", "high_risk_hour", "spike_actual", "da", "rt",
+                    "exp_price"]
         s.loc[s.index >= "2026-04-25", app_cols].astype("float32").to_parquet(os.path.join(ROOT, "app", "data", "strategies_2026.parquet"))
         val.to_csv(os.path.join(OUT, "spike_validation.csv"), index=False)
         val.to_csv(os.path.join(ROOT, "app", "data", "spike_validation.csv"), index=False)
         res.to_csv(os.path.join(ROOT, "app", "data", "strategy_results.csv"), index=False)
+        savings_ci(s).round(4).to_csv(os.path.join(ROOT, "app", "data", "savings_ci.csv"), index=False)
+        shift_backtest(s).round(3).to_csv(os.path.join(ROOT, "app", "data", "shift_backtest.csv"), index=False)
         res.to_csv(os.path.join(OUT, "strategy_results.csv"), index=False)
         joblib.dump(prod, os.path.join(MOD, "spike_classifier.joblib"))
     return s, val, res, spike_premium

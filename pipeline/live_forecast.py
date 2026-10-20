@@ -42,6 +42,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA, MOD = os.path.join(HERE, "data"), os.path.join(HERE, "models", "lag48")
 BACKTEST = os.path.join(HERE, "out", "lag48", "quantile_forecasts_raw.parquet")
 LIVE = os.path.join(os.path.dirname(HERE), "live")
+ARCHIVE = os.path.join(LIVE, "forecast_archive.parquet")   # every live day's raw forecast, as issued
+
+
+def _model_version():
+    f = os.path.join(MOD, "model_version.txt")
+    return open(f).read().strip() if os.path.exists(f) else "v2.0 (trained 2019, 2021-2025)"
+
+
+MODEL_VERSION = _model_version()
 MIN_LAG, ISSUE_HOUR_UTC, WIN = 48, 16, 168
 LAT, LON = 38.4167, -113.0167
 SOLAR_FACTOR_2025 = 0.815          # mean 2025 EIA-923 / physics factor (same rule v3 uses for months not yet published)
@@ -215,14 +224,18 @@ class QNet(nn.Module):
         return torch.cat([z[:, :1], z[:, :1] + torch.cumsum(nn.functional.softplus(z[:, 1:]), dim=1)], dim=1)
 
 
-def load_models():
-    gbms = joblib.load(os.path.join(MOD, "demand_gbm_quantiles.joblib"))
-    ck = torch.load(os.path.join(MOD, "demand_lstm_quantiles.pt"), weights_only=False)
+ORIGINAL = os.path.join(MOD, "v2.0_original")   # the models the backtest was built with (kept when a retrain promotes)
+
+
+def load_models(mod=None):
+    mod = mod or MOD
+    gbms = joblib.load(os.path.join(mod, "demand_gbm_quantiles.joblib"))
+    ck = torch.load(os.path.join(mod, "demand_lstm_quantiles.pt"), weights_only=False)
     net = QNet(ck["n_seq"], ck["n_now"], len(ck["quantiles"]))
     net.load_state_dict(ck["state_dict"])
     net.eval()
     sc = {k: pd.Series(v) for k, v in ck["scaler"].items()}
-    ren = joblib.load(os.path.join(MOD, "renewable_gbm_quantiles.joblib"))
+    ren = joblib.load(os.path.join(mod, "renewable_gbm_quantiles.joblib"))
     return gbms, net, sc, ck, ren
 
 
@@ -316,7 +329,7 @@ def verify():
     fc = fc.reindex(m.index)
     F = build_features(m, fc)
     mask = (m.index.year == 2026) & (m.index <= m[D].last_valid_index())
-    p = predict(F, np.asarray(mask), load_models())
+    p = predict(F, np.asarray(mask), load_models(ORIGINAL if os.path.isdir(ORIGINAL) else MOD))
     bt = pd.read_parquet(BACKTEST)
     bt = bt[bt.period == "B forward test 2026"]
     cols = [c for c in p.columns if c in bt.columns]
@@ -370,18 +383,46 @@ def run(now_utc=None):
     for c in w_latest.columns:
         fcw.loc[tgt, c] = w_latest[c].reindex(idx[tgt]).values
 
-    # --- forecast all live days (backfill) + the target day
+    # --- save the live-period history (actuals + weather) for the monthly retrain
+    hcols = [D, "Day-Ahead Demand Forecast (MWh)", "Temperature (C)", "GHI (W/m2)", "DNI (W/m2)", "DHI (W/m2)", "Cloud Cover (%)",
+             "Wind Speed 10m (m/s)", "Wind Speed 100m (m/s)", "Clear-sky GHI (W/m2)", R]
+    hist_live = df.loc[live_h & (idx <= now_utc), hcols].join(fcw.loc[live_h & (idx <= now_utc), list(OM_VARS.values())].add_prefix("fc_"))
+    hist_live.index.name = "timestamp_utc"
+    hist_live.to_parquet(os.path.join(LIVE, "history_live.parquet"))
+
+    # --- forecast the live days. Past days come from the archive exactly as issued (never recomputed, so a retrained
+    #     model can never rewrite the track record). A day is (re)forecast only if it is not archived yet, or its buy
+    #     deadline has not passed (+4 h grace for the scheduled run).
     F = build_features(df, fcw)
     live_days = pd.date_range(live_start_day, target_day, freq="D")
-    want = np.isin(idx, np.concatenate([buy_day_hours(d) for d in live_days]))
-    raw = predict(F, want, load_models())
-    raw["buy_day"] = (raw.index - pd.Timedelta(hours=7)).normalize()
+    archive = pd.read_parquet(ARCHIVE) if os.path.exists(ARCHIVE) else pd.DataFrame()
+    archived_days = set(pd.to_datetime(archive.buy_day).dt.normalize()) if len(archive) else set()
+    open_days = [d for d in live_days
+                 if d not in archived_days or now_utc <= d - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC + 4)]
+    want = np.isin(idx, np.concatenate([buy_day_hours(d) for d in open_days])) if open_days else np.zeros(len(idx), bool)
+    new = predict(F, want, load_models())
+    new["buy_day"] = (new.index - pd.Timedelta(hours=7)).normalize()
     last_known_target = buy_day_hours(target_day)[0] - pd.Timedelta(hours=7 + 24 - ISSUE_HOUR_UTC + 2)
     provisional = bool(d_eia.index.max() < last_known_target) if len(d_eia) else True
-    raw["issued"] = np.where(raw.buy_day == target_day, str(now_utc), "backfill (day-ahead weather, same rules)")
+    deadline = new.buy_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC)
+    new["issued"] = np.where(now_utc <= deadline + pd.Timedelta(hours=4), str(now_utc), "backfill (day-ahead weather, same rules)")
+    new["model_version"] = MODEL_VERSION
+    keep = archive[~pd.to_datetime(archive.buy_day).dt.normalize().isin(open_days)] if len(archive) else archive
+    raw = pd.concat([keep, new]).sort_index()
+    raw = raw[~raw.index.duplicated(keep="last")]
+    raw = raw[pd.to_datetime(raw.buy_day).dt.normalize().isin(live_days)]
+    raw.to_parquet(ARCHIVE)
+    print(f"  forecast {len(open_days)} open day(s); {len(live_days) - len(open_days)} day(s) from the archive", flush=True)
 
-    # --- why: SHAP drivers of the demand GBM P50 (half of the blend), grouped, mean per hour of each buy day
-    drivers = explain(F["G"], raw.index[raw["dem_raw_P50"].notna()] if "dem_raw_P50" in raw else raw.index[:0])
+    # --- why: SHAP drivers of the demand GBM P50 (half of the blend), grouped, mean per hour of each buy day.
+    #     Only the open days are explained; earlier days keep the drivers stored when they were issued.
+    drivers = explain(F["G"], new.index[new["dem_raw_P50"].notna()] if "dem_raw_P50" in new else new.index[:0])
+    old_drv = os.path.join(LIVE, "drivers.csv")
+    if os.path.exists(old_drv):
+        od = pd.read_csv(old_drv, index_col=0)
+        od.index = pd.to_datetime(od.index).date
+        drivers = pd.concat([od[~pd.Index(od.index).isin(drivers.index)], drivers]).sort_index()
+    drivers.index.name = "buy_day"
 
     # --- calibration on backtest + live history
     bt = pd.read_parquet(BACKTEST)

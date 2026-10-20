@@ -1,22 +1,22 @@
 {
-  "run_utc": "2026-10-20 05:00:00",
+  "run_utc": "2026-10-20 06:00:00",
   "buy_day": "2026-10-21",
   "provisional": true,
-  "newest_demand_hour_utc": "2026-10-20 02:00:00",
+  "newest_demand_hour_utc": "2026-10-20 03:00:00",
   "buy_deadline_utc": "2026-10-20 16:00:00",
-  "tier": "Yellow",
-  "risk": 0.318,
-  "buy_level": "P98",
-  "buy_net_MWh_total": 122436.0,
-  "buy_demand_MWh_total": 126891.0,
-  "p50_demand_MWh_total": 112154.0,
-  "hours": 20,
+  "tier": "Green",
+  "risk": 0.196,
+  "buy_level": "P95",
+  "buy_net_MWh_total": 125769.0,
+  "buy_demand_MWh_total": 129231.0,
+  "p50_demand_MWh_total": 117036.0,
+  "hours": 21,
   "live_days_scored": 48,
   "weather": "ECMWF IFS 0.25 (Open-Meteo), latest run for the buy day",
   "note": "Provisional: run before the buy-time demand reading was published; the official run is after 16:15 UTC.",
   "ladder": {
-    "block1_MWh": 122436.0,
-    "block2_MWh": 0.0,
+    "block1_MWh": 125769.0,
+    "block2_MWh": 2189.0,
     "high_risk_hours": 6
   }
 }

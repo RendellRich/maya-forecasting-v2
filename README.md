@@ -23,6 +23,9 @@ a small surplus, so Maya v2 forecasts a calibrated range and recommends a buy le
 | `pipeline/strategies.py` | Hourly spike-risk model, bid ladder (recommended buy), baselines, all scored at real CAISO prices; also scores the next buy day |
 | `pipeline/data/pace_rt_history_2024_2026.csv` | PACE real-time prices Mar 2024 - Apr 2026 (before EDAM), used to train the spike model |
 | `pipeline/data/weather_live_*.csv` | Cached ECMWF weather since the training data ends, so each daily run only downloads a few days |
+| `pipeline/retrain.py` | Monthly champion / challenger retrain (promotes only if better on the last 45 unseen days); `.github/workflows/monthly_retrain.yml` |
+| `pipeline/make_summary.py` | One-page client summary PDF (`app/data/maya_v2_summary.pdf`), rebuilt daily |
+| `live/forecast_archive.parquet` | Every live day's forecast as issued; past days are never recomputed |
 | `pipeline/prices.py` | CAISO EDAM day-ahead and real-time PACE prices (OASIS, free); called by the daily run |
 | `pipeline/data/pace_prices_2026.csv` | Hourly PACE prices since May 1 2026 |
 | `pipeline/out/lag48`, `lag24` | Backtest results for both lag settings |
