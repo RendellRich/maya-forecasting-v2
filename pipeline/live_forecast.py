@@ -106,6 +106,33 @@ def fetch_weather(start_date, end_date):
     return latest, prev1
 
 
+WEATHER_STORE = os.path.join(DATA, "weather_live_{}.csv")
+
+
+def cached_weather(master_end, target_day):
+    """Weather since the training data ends, kept in data/weather_live_*.csv so each run only downloads the
+    last few days plus the forecast (keeps the Open-Meteo request small and under its rate limits).
+    Past days keep the values first stored, which is what the forecast at that time would have seen."""
+    start_all = (master_end - pd.Timedelta(days=10)).normalize()
+    stored = {}
+    for k in ["latest", "prev1"]:
+        f = WEATHER_STORE.format(k)
+        stored[k] = pd.read_csv(f, parse_dates=["timestamp_utc"]).set_index("timestamp_utc") if os.path.exists(f) else pd.DataFrame()
+    have = stored["latest"].index.max() if not stored["latest"].empty else None
+    start = start_all if have is None else max(start_all, (have - pd.Timedelta(days=4)).normalize())
+    new_latest, new_prev1 = fetch_weather(start.date(), (target_day + pd.Timedelta(days=2)).date())
+    out = []
+    for k, new in [("latest", new_latest), ("prev1", new_prev1)]:
+        old = stored[k]
+        # previous_day1 values for past hours never change; "latest" for past hours is the analysis-like short-range value
+        merged = pd.concat([old[old.index < new.index.min()], new]) if not old.empty else new
+        merged = merged[~merged.index.duplicated(keep="last")].sort_index()
+        merged.index.name = "timestamp_utc"
+        merged.round(3).to_csv(WEATHER_STORE.format(k))
+        out.append(merged)
+    return out[0], out[1]
+
+
 def clean_demand(s):
     """EIA's newest hours are often partial; drop the last 2 hours and obvious bad values."""
     s = s.copy()
@@ -315,7 +342,7 @@ def run(now_utc=None):
     d_eia, df_eia = fetch_eia(master_end - pd.Timedelta(days=10), now_utc + pd.Timedelta(days=2))
     d_eia = clean_demand(d_eia[d_eia.index <= now_utc])          # never use readings after the run time
     df_eia = df_eia[df_eia.index <= now_utc + pd.Timedelta(days=2)]
-    w_latest, w_prev1 = fetch_weather((master_end - pd.Timedelta(days=10)).date(), (target_day + pd.Timedelta(days=2)).date())
+    w_latest, w_prev1 = cached_weather(master_end, target_day)
     print(f"  EIA demand through {d_eia.index.max()} | weather {w_latest.index.min()} .. {w_latest.index.max()}", flush=True)
 
     # --- hourly table: master history, then live hours
@@ -379,6 +406,7 @@ def run(now_utc=None):
     h = cal.join(raw[["dem_raw_P50", "dem_raw_P95", "dem_gbm_P50", "dem_lstm_P50", "buy_day"]])
     h["dem_actual"] = df[D].reindex(h.index)
     h["temp_fc"], h["cloud_fc"] = fcw["Temperature (C)"].reindex(h.index), fcw["Cloud Cover (%)"].reindex(h.index)
+    h["ghi_fc"] = fcw["GHI (W/m2)"].reindex(h.index)
     h["temp_lag"] = df["Temperature (C)"].shift(MIN_LAG).reindex(h.index)
     allerr = pd.concat([(bt["dem_actual"] - calibrate(bt["dem_raw_P50"], bt["dem_actual"], 0.5)).abs(),
                         (h["dem_actual"] - h["dem_P50"]).abs()]).sort_index()
@@ -463,6 +491,16 @@ def run(now_utc=None):
     tgt_rows.reset_index().round(1).to_csv(os.path.join(LIVE, "next_buy_day.csv"), index=False)
     drivers.to_csv(os.path.join(LIVE, "drivers.csv"))
     json.dump(summary, open(os.path.join(LIVE, "summary.json"), "w"), indent=2)
+    # --- strategies: hourly spike risk, bid ladder for the buy day, and the scored strategy history
+    try:
+        import strategies
+        st_s, _, st_res, _ = strategies.build()
+        nxt = st_s[st_s.index.isin(tgt_rows.index)]
+        summary["ladder"] = dict(block1_MWh=round(float(nxt.ladder_block1.sum()), 0), block2_MWh=round(float(nxt.ladder_block2.sum()), 0),
+                                 high_risk_hours=int(nxt.high_risk_hour.sum()))
+        json.dump(summary, open(os.path.join(LIVE, "summary.json"), "w"), indent=2)
+    except Exception as e:
+        print(f"  strategies step skipped ({e.__class__.__name__}: {e})", flush=True)
     print(json.dumps(summary, indent=2))
     print(f"done in {time.time() - t0:.0f}s", flush=True)
 

@@ -93,11 +93,66 @@ def settle(actual, buy, P):
                 volume=k.b.sum() / k.a.sum())
 
 
+@st.cache_data(ttl=600)
+def load_strategies():
+    f = DATA / "strategies_2026.parquet"
+    return pd.read_parquet(f) if f.exists() else None
+
+
 bt = load_backtest()
 live = load_live()
 prices = load_prices()
+SD = load_strategies()
+
+# ----------------------------------------------------------------------------- sidebar: Maui Hiva's size
+st.sidebar.header("Maui Hiva's size")
+PACE_NET_AVG = float(bt["net_actual"].mean())
+size_mode = st.sidebar.radio("Show numbers for", ["Maui Hiva", "All of PACE"], index=0, horizontal=True)
+if size_mode == "Maui Hiva":
+    mh_mw = st.sidebar.number_input("Maui Hiva's average load, MW", min_value=0.1, value=100.0, step=10.0,
+                                    help="Average power Maui Hiva buys per hour. 1 MW for an hour = 1 MWh.")
+    SCALE = mh_mw / PACE_NET_AVG
+    st.sidebar.caption(f"That is {SCALE * 100:.2f}% of PACE's average net load ({PACE_NET_AVG:,.0f} MW). Every MWh and dollar "
+                       "figure is scaled to this size, assuming Maui Hiva's hourly pattern follows PACE's. 100 MW is a "
+                       "placeholder until Maui Hiva confirms its load (or shares meter data).")
+else:
+    SCALE = 1.0
+UNIT_NOTE = "Maui Hiva scale" if SCALE != 1.0 else "all of PACE"
+NOT_MWH = {"period", "temp_fc", "cloud_fc", "temp_lag", "price_da", "price_rt", "tier", "buy_level", "buy_day", "issued"}
+
+
+def scaled(df, cols=None):
+    """Copy of df with MWh / $ columns multiplied by SCALE (shares, %, prices and counts untouched)."""
+    if df is None or SCALE == 1.0:
+        return df
+    d = df.copy()
+    cols = cols if cols is not None else [c for c in d.columns if c not in NOT_MWH and pd.api.types.is_numeric_dtype(d[c])]
+    d[cols] = d[cols] * SCALE
+    return d
+
+
+bt = scaled(bt)
+if live is not None:
+    live = dict(live)
+    live["hourly"] = scaled(live["hourly"])
+    live["track"] = scaled(live["track"], [c for c in ["short_MWh", "surplus_MWh", "worst_short_MWh", "maya_P50_MAE", "pace_MAE",
+                                                       "maya_extra_cost", "maya_short_cost", "pace_extra_cost"] if c in live["track"]])
+    live["drivers"] = scaled(live["drivers"])
+    live["days"] = scaled(live["days"], ["width", "disagree", "recent_err"])
+if SD is not None:
+    SD = scaled(SD, [c for c in SD.columns if c in {"actual", "perfect", "persistence", "pace", "maya_P95", "maya_day_rule",
+                                                           "maya_hour_rule", "maya_ladder", "ladder_block1", "ladder_block2"}])
+_load_csv_raw = load_csv
+SCALE_COLS = {"lag48_risk_validation.csv": ["avg_worst_short_MWh", "avg_worst_P50_miss_MWh"],
+              "lag48_risk_adjusted_buy.csv": ["avg_short_MWh", "avg_surplus_MWh", "worst_short_MWh", "cost_K19", "cost_K9"]}
+
+
+def load_csv(name):
+    d = _load_csv_raw(name)
+    return scaled(d, SCALE_COLS[name]) if name in SCALE_COLS else d
 
 # ----------------------------------------------------------------------------- sidebar: the client's costs
+st.sidebar.divider()
 st.sidebar.header("Cost scenario")
 st.sidebar.caption("What-if pricing for the cost tables. Real-price results (CAISO day-ahead and real-time, PACE) are shown "
                    "separately and do not depend on this.")
@@ -123,10 +178,11 @@ pre = "net" if series.startswith("Net") else "dem"
 st.title("Maya v2: how much to buy the day before")
 st.caption("Calibrated buy-ahead forecasts for PacifiCorp East demand and Milford, Utah renewable output. "
            "Built so that buying short, the expensive mistake, happens rarely and on purpose. "
-           "Every forecast uses only what is known at the buy deadline (10 am Mountain the day before).")
+           "Every forecast uses only what is known at the buy deadline (10 am Mountain the day before). "
+           f"MWh and dollar figures are shown for {UNIT_NOTE}.")
 
-tab_buy, tab_track, tab_bt, tab_risk, tab_how = st.tabs(
-    ["Tomorrow's buy", "Live track record", "Maya vs PACE", "Risk score", "How it works"])
+tab_buy, tab_track, tab_bt, tab_save, tab_risk, tab_how = st.tabs(
+    ["Tomorrow's buy", "Live track record", "Maya vs PACE", "What it would have saved", "Risk score", "How it works"])
 
 # ============================================================================= TOMORROW
 with tab_buy:
@@ -140,8 +196,8 @@ with tab_buy:
         if S.get("provisional"):
             st.warning(f"{S.get('note', 'Provisional forecast.')} Newest demand reading used: "
                        f"{pd.Timestamp(S['newest_demand_hour_utc']).tz_localize('UTC').tz_convert(LOCAL_TZ):%a %I %p} MT.")
-        rule = st.radio("Buy rule", ["Maya rule (P95 on Green days, P98 on Yellow or Red days)", "Fixed P90", "Fixed P95", "Fixed P98"],
-                        horizontal=True)
+        rule = st.radio("Buy rule", ["Maya rule (P95 on Green days, P98 on Yellow or Red days; Block 1 of the bid ladder)",
+                                     "Fixed P90", "Fixed P95", "Fixed P98"], horizontal=True)
         use = lvl if rule.startswith("Maya") else rule.split()[-1]
         T["buy"] = T[f"{pre}_{use}"]
         T["best"] = T[f"{pre}_P50"]
@@ -187,7 +243,7 @@ with tab_buy:
                            f"{fmt(r.gbm_P50_mean)} MWh per hour. Bars show what pushes it up (orange) or down (blue), from SHAP values.")
             d = Dy.loc[bday]
             why = []
-            if d.recent_err > 350:
+            if d.recent_err > 350 * SCALE:
                 why.append("recent forecast misses have been large")
             if d.temp_max > 33 or d.temp_min < -8:
                 why.append("temperatures are near the extremes")
@@ -204,6 +260,25 @@ with tab_buy:
                                 "Renewables you can count on, P05 (MWh)": T.ren_P05.round(0).values})
             st.dataframe(tbl, hide_index=True, use_container_width=True, height=300)
             st.download_button("Download this buy plan (CSV)", tbl.to_csv(index=False), file_name=f"maya_buy_plan_{bday:%Y-%m-%d}.csv")
+        if SD is not None and SD.index.isin(T.index).any():
+            st.subheader("Bid ladder for the buy day")
+            L = SD.reindex(T.index)
+            st.markdown("How to submit the buy in the day-ahead market (the recommended strategy). **Block 1** is the Maya-rule "
+                        "amount, bought at any price, so it is always covered. **Block 2** is the extra cushion up to P98, bid at a limit price equal to the expected "
+                        "real-time price for that hour: it is bought only if the day-ahead price clears at or below that limit, "
+                        "because otherwise covering any shortfall in real time is expected to be cheaper. Hours shaded red have a high "
+                        "chance of a real-time price spike.")
+            lad = pd.DataFrame({"Hour ending (MT)": dl.strftime("%a %I %p"),
+                                "Block 1: buy at any price (MWh)": L.ladder_block1.round(1 if SCALE != 1 else 0).values,
+                                "Block 2: extra (MWh)": L.ladder_block2.round(1 if SCALE != 1 else 0).values,
+                                "Block 2 limit ($/MWh)": L.ladder_limit.round(0).values,
+                                "Spike risk": (L.spike_prob * 100).round(0).map(lambda v: "n/a" if pd.isna(v) else f"{v:.0f}%").values,
+                                "High risk": np.where(L.high_risk_hour == 1, "yes", "").tolist()})
+            dec = "{:,.1f}" if SCALE != 1.0 else "{:,.0f}"
+            st.dataframe(lad.style.apply(lambda r: ["background-color: rgba(209,68,58,0.12)" if r["High risk"] == "yes" else "" for _ in r], axis=1)
+                         .format({"Block 1: buy at any price (MWh)": dec, "Block 2: extra (MWh)": dec, "Block 2 limit ($/MWh)": "${:,.0f}"}),
+                         hide_index=True, use_container_width=True, height=320)
+            st.download_button("Download the bid ladder (CSV)", lad.to_csv(index=False), file_name=f"maya_bid_ladder_{bday:%Y-%m-%d}.csv")
         st.caption(f"Run {S['run_utc']} UTC. Weather: {S['weather']}. Net load = PACE demand minus Milford-area renewable output.")
 
 # ============================================================================= LIVE TRACK RECORD
@@ -357,6 +432,83 @@ with tab_bt:
         st.caption("The grey line uses yesterday's same-hour demand, which is not all known at a 10 am buy. It shows what an "
                    "afternoon buy deadline could be worth.")
 
+# ============================================================================= SAVINGS
+STRAT_NAMES = {"persistence": "No forecast (buy the same hour 2 days ago)", "pace": "PACE's forecast as published",
+               "maya_P95": "Maya P95", "maya_day_rule": "Maya daily rule (P95, P98 on Yellow/Red days)",
+               "maya_hour_rule": "Maya hourly rule (P98 in high spike-risk hours; tested, not recommended)",
+               "maya_ladder": "Maya bid ladder (recommended: daily rule + extra to P98 if day-ahead is below expected real-time)"}
+STRAT_COL = {"persistence": "#9a9a9a", "pace": C_BASE, "maya_P95": "#7fb0e8", "maya_day_rule": C_BUY,
+             "maya_hour_rule": "#6b4fbb", "maya_ladder": "#b8860b"}
+with tab_save:
+    if SD is None or SD.da.notna().sum() == 0:
+        st.info("Run `python pipeline/strategies.py` to build the strategy history.")
+    else:
+        S = SD[SD.da.notna() & SD.rt.notna() & SD.actual.notna()].copy()
+        S["day"] = (S.index - pd.Timedelta(hours=7)).normalize()
+
+        def bill(col, frame):
+            k = frame[["actual", col, "da", "rt"]].dropna()
+            gap = k.actual - k[col]
+            return dict(bill=(k.da * k[col] + k.rt * gap).sum(), extra=((k.rt - k.da) * gap).sum(), short_pct=(gap > 0).mean() * 100,
+                        short_mwh=gap.clip(lower=0).sum(), worst=gap.clip(lower=0).max(), mwh=k.actual.sum(), hours=len(k))
+        st.markdown(f"What Maui Hiva's day-ahead power bill would have been from **{S.index.min():%b %d}** to **{S.index.max():%b %d, %Y}** "
+                    f"({len(S) // 24} days of real CAISO day-ahead and real-time PACE prices), for {UNIT_NOTE}. "
+                    "Each strategy buys its number day-ahead; any gap is covered (or any surplus sold) at the real-time price.")
+        perfect = bill("perfect", S)
+        rows = []
+        for key, name in STRAT_NAMES.items():
+            r = bill(key, S)
+            rows.append({"Strategy": name, "key": key, "Power bill": r["bill"], "vs perfect foresight": r["extra"],
+                         "vs no forecast": r["bill"] - bill("persistence", S)["bill"], "Hours short %": round(r["short_pct"], 1),
+                         "MWh bought short": r["short_mwh"], "Worst hour short (MWh)": r["worst"]})
+        T = pd.DataFrame(rows)
+        best = T[T.key.str.startswith("maya")].sort_values("Power bill").iloc[0]
+        nf, pc = T.set_index("key").loc["persistence"], T.set_index("key").loc["pace"]
+        k1, k2, k3 = st.columns(3)
+        kpi(k1, "Bill with perfect foresight", money(perfect["bill"]), f"average {money(perfect['bill'] / perfect['mwh'])}/MWh")
+        kpi(k2, f"Best Maya option vs no forecast", money(nf["Power bill"] - best["Power bill"]) + " saved",
+            f"{best.Strategy.split(' (')[0]}; short {best['Hours short %']:.1f}% of hours vs {nf['Hours short %']:.0f}%", C_BUY)
+        kpi(k3, "Best Maya option vs PACE's number", money(pc["Power bill"] - best["Power bill"]) + " saved",
+            f"MWh bought short: {fmt(best['MWh bought short'])} vs {fmt(pc['MWh bought short'])}")
+        show = T.drop(columns=["key"]).copy()
+        for c in ["Power bill", "vs perfect foresight", "vs no forecast"]:
+            show[c] = show[c].map(lambda v: f"${v:,.0f}" if v >= 0 else f"-${-v:,.0f}")
+        for c in ["MWh bought short", "Worst hour short (MWh)"]:
+            show[c] = show[c].round(1 if SCALE != 1.0 else 0)
+        st.dataframe(show, hide_index=True, use_container_width=True)
+        st.caption("Negative = cheaper. On ordinary days the strategies differ by cents per MWh; the real gap is in how often each one "
+                   "is caught short, which is what decides the bill on a spike day. The days below show that.")
+
+        st.subheader("Spike days")
+        S["spread"] = S.rt - S.da
+        top = (S.assign(pos=S.spread.clip(lower=0) * S.actual).groupby("day").agg(max_rt=("rt", "max"), max_spread=("spread", "max"), pos=("pos", "sum"))
+               .sort_values("pos", ascending=False).head(8))
+        pick = st.selectbox("Day (Mountain time), ranked by how much real-time ran above day-ahead",
+                            [f"{d:%a %b %d}  (real-time peak ${r.max_rt:,.0f}/MWh)" for d, r in top.iterrows()])
+        dsel = top.index[[f"{d:%a %b %d}  (real-time peak ${r.max_rt:,.0f}/MWh)" for d, r in top.iterrows()].index(pick)]
+        Dd = S[S.day == dsel]
+        x = local(Dd.index)
+        from plotly.subplots import make_subplots
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_bar(x=x, y=Dd.actual, name="Actual need", marker_color="#d9d9d9", secondary_y=False)
+        for key in ["persistence", "pace", "maya_ladder"]:
+            fig.add_scatter(x=x, y=Dd[key], name=STRAT_NAMES[key].split(" (")[0], line=dict(color=STRAT_COL[key], width=2.4 if key.startswith("maya") else 1.6), secondary_y=False)
+        fig.add_scatter(x=x, y=Dd.rt, name="Real-time price", line=dict(color="#d1443a", width=1.4, dash="dot"), secondary_y=True)
+        fig.add_scatter(x=x, y=Dd.da, name="Day-ahead price", line=dict(color="#555", width=1.2, dash="dash"), secondary_y=True)
+        fig.update_yaxes(title_text="MWh per hour", secondary_y=False)
+        fig.update_yaxes(title_text="$/MWh", secondary_y=True)
+        fig.update_layout(height=380, margin=dict(l=10, r=10, t=30, b=10), legend=dict(orientation="h", y=1.12), hovermode="x unified")
+        st.plotly_chart(fig, use_container_width=True)
+        dr = []
+        for key, name in STRAT_NAMES.items():
+            r = bill(key, Dd)
+            dr.append({"Strategy": name, "Bill that day": r["bill"], "vs perfect foresight": r["extra"], "Hours short": int(round(r["short_pct"] * r["hours"] / 100)),
+                       "MWh bought short": round(r["short_mwh"], 1)})
+        DR = pd.DataFrame(dr)
+        for c in ["Bill that day", "vs perfect foresight"]:
+            DR[c] = DR[c].map(lambda v: f"${v:,.0f}" if v >= 0 else f"-${-v:,.0f}")
+        st.dataframe(DR, hide_index=True, use_container_width=True)
+
 # ============================================================================= RISK
 with tab_risk:
     st.markdown("Each day gets a **Green / Yellow / Red** tier from a small classifier that estimates the chance of at least "
@@ -372,19 +524,34 @@ with tab_risk:
         c.markdown(f"<span style='font-size:1.3rem;color:{TIER_COL[r.tier]}'>&#9679; {r.tier}</span> "
                    f"({r.share_of_days_pct:.0f}% of days)", unsafe_allow_html=True)
         kpi(c, "Days with a short hour at P95", f"{r.days_with_a_short_hour_pct:.0f}%",
-            f"average worst hour short: {r.avg_worst_short_MWh:.0f} MWh")
+            f"average worst hour short: {r.avg_worst_short_MWh:,.1f} MWh")
     auc = rv[(rv.version == "AUC") & (rv.period == pick) & (rv.tier == "v2 classifier")].share_of_days_pct
     st.caption(f"Ranking skill (AUC) {float(auc.iloc[0]):.2f} (0.5 = coin flip). A model-uncertainty-only version scored about 0.5, "
                "because daily recalibration already absorbs it. The tier's value is in moving the buy level, below.")
     st.subheader("Does stepping up on risky days pay?")
     ra = load_csv("lag48_risk_adjusted_buy.csv")
-    ra = ra[ra.period == pick].drop(columns=["period"])
+    ra = ra[ra.period == pick].drop(columns=["period"]).round(1 if SCALE == 1.0 else 2)
     st.dataframe(ra.rename(columns={"policy": "Buy rule", "short_hours_pct": "Short hours %", "avg_short_MWh": "Avg short MWh/h",
                                     "avg_surplus_MWh": "Avg surplus MWh/h", "worst_short_MWh": "Worst hour short",
                                     "cost_K19": "Cost index (short = 19x)", "cost_K9": "Cost index (short = 9x)"}).drop(columns=["hours"]),
                  hide_index=True, use_container_width=True)
     st.caption("Demand. Stepping up to P98 on Yellow and Red days cuts short hours by about a quarter and lowers the worst hour, "
                "for about 1% more cost at a 19x ratio. Cost index = average per hour of 19 x short MWh + surplus MWh.")
+    st.subheader("Hourly spike risk")
+    st.markdown(f"A second model scores each hour for the chance that the real-time price comes in more than \\$25/MWh above its "
+                "normal level for that hour. It uses only buy-time inputs: hour, weekday, month, forecast temperature, sun and cloud, "
+                "Maya's forecast net load and its ramp, forecast uncertainty, and recent real-time prices (ending two days earlier). "
+                "Trained on PACE real-time prices from March 2024, scored walk-forward month by month.")
+    sv = load_csv("spike_validation.csv")
+    sv = sv[sv.period.isin(["2025", "2026"])]
+    cs = st.columns(len(sv))
+    for c, (_, r) in zip(cs, sv.iterrows()):
+        kpi(c, f"{r.period}: spikes caught in the flagged hours", f"{r.share_of_spikes_caught_pct:.0f}%",
+            f"flagged {r.high_risk_share_pct:.0f}% of hours; spike rate {r.spike_rate_high_pct:.1f}% in flagged hours vs "
+            f"{r.spike_rate_other_pct:.1f}% in others; AUC {r.auc:.2f}")
+    st.caption("Spike risk sets the bid ladder's limit prices and flags hours on the buy plan. Used on its own to add cushion hour by "
+               "hour it did not beat the simpler daily rule, because the day-ahead price already prices in most predictable risk.")
+    st.subheader("Daily risk tier over time")
     dr = load_csv("backtest_daily_risk.csv")
     dr["day"] = pd.to_datetime(dr.iloc[:, 0])
     fig = go.Figure()
@@ -415,7 +582,15 @@ yesterday's same-hour demand, which is not all known at a morning buy; with that
 
 **4. Risk tier.** A small classifier flags days likely to have a short hour. On Yellow and Red days the rule buys P98 instead of P95.
 
-**5. Live.** A daily job pulls PACE demand from EIA (free API) and ECMWF forecasts from Open-Meteo, rebuilds the Milford renewable
+**5. Bid ladder (recommended way to buy).** Block 1, the Maya-rule amount, is bid at any price. Block 2, the extra cushion up to
+P98 on Green days, is bid at a limit equal to the expected real-time price for that hour: recent normal real-time price plus the
+hour's spike risk times a typical spike premium. It is bought only when day-ahead clears at or below that limit. At real May to
+Oct 2026 prices this was the best option tested (-\\$0.20/MWh vs perfect foresight, short on 3.0% of hours).
+
+**6. Sized to Maui Hiva.** Every MWh and dollar figure can be shown at Maui Hiva's own size (sidebar), assuming its hourly
+pattern follows PACE's net load. Replace the 100 MW placeholder with their real average load, or their meter data later.
+
+**7. Live.** A daily job pulls PACE demand from EIA (free API) and ECMWF forecasts from Open-Meteo, rebuilds the Milford renewable
 estimate, forecasts the next buy day, recalibrates, and scores yesterday. The track record tab is that job run over every day since
 the training data ends.
 

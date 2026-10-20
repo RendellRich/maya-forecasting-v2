@@ -3,3 +3,5 @@ __pycache__/
 *.log
 .streamlit/secrets.toml
 .venv/
+pipeline/out/strategies_hourly.parquet
+pipeline/models/lag48/spike_classifier.joblib

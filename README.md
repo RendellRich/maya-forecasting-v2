@@ -20,6 +20,9 @@ a small surplus, so Maya v2 forecasts a calibrated range and recommends a buy le
 | `pipeline/risk_score.py` | Green / Yellow / Red daily risk tier, walk-forward validation, buy-rule test |
 | `pipeline/live_forecast.py` | Daily live run (EIA + Open-Meteo), backfills from Sep 2 2026, writes `live/`. `--verify` checks it reproduces the backtest exactly |
 | `pipeline/maya_common.py` | Shared calibration and solar physics |
+| `pipeline/strategies.py` | Hourly spike-risk model, bid ladder (recommended buy), baselines, all scored at real CAISO prices; also scores the next buy day |
+| `pipeline/data/pace_rt_history_2024_2026.csv` | PACE real-time prices Mar 2024 - Apr 2026 (before EDAM), used to train the spike model |
+| `pipeline/data/weather_live_*.csv` | Cached ECMWF weather since the training data ends, so each daily run only downloads a few days |
 | `pipeline/prices.py` | CAISO EDAM day-ahead and real-time PACE prices (OASIS, free); called by the daily run |
 | `pipeline/data/pace_prices_2026.csv` | Hourly PACE prices since May 1 2026 |
 | `pipeline/out/lag48`, `lag24` | Backtest results for both lag settings |
@@ -34,10 +37,15 @@ at the real-time price. Extra cost vs perfect foresight = (real-time - day-ahead
 `pipeline/data/` needs `master_hourly_cleaned_ALL_YEARS_v2.csv` and `ecmwf_dayahead_forecast_2024-2026.csv`
 (copies of the files in `forecast-dashboard-v2/pipeline`).
 
+## Sizing
+The dashboard sidebar scales every MWh and dollar figure to Maui Hiva's average load (placeholder 100 MW), assuming its hourly
+pattern follows PACE net load.
+
 ## Rebuild everything
 ```
 cd pipeline
 set MAYA_MIN_LAG=48
 python quantile_models.py && python calibrate_and_score.py && python risk_score.py && python prep_app_data.py
+python strategies.py
 python live_forecast.py --verify && python live_forecast.py
 ```
