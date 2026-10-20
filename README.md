@@ -26,7 +26,7 @@ a small surplus, so Maya v2 forecasts a calibrated range and recommends a buy le
 | `pipeline/models/lag48` | Production models used by the live run |
 | `live/` | Latest forecast, live track record, daily drivers |
 | `app/` | Streamlit dashboard |
-| `deploy/daily_forecast.yml` | Daily schedule (GitHub Actions). Move it to `.github/workflows/` in the new repo and add an `EIA_API_KEY` secret |
+| `.github/workflows/daily_forecast.yml` | Daily GitHub Actions run at 16:15 UTC (10:15 am MDT). Commits `live/` and the price file. Optional secret `EIA_API_KEY` |
 
 Real-price settlement (track record and Maya vs PACE tab): buy B day-ahead at the day-ahead price, cover or sell the gap
 at the real-time price. Extra cost vs perfect foresight = (real-time - day-ahead) x (actual - buy).

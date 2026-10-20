@@ -74,7 +74,7 @@ def get_json(url, params, tries=4):
 
 def fetch_eia(start, end):
     """PACE hourly demand (D) and PACE day-ahead demand forecast (DF), UTC hour-ending."""
-    key = os.environ.get("EIA_API_KEY", "DEMO_KEY")
+    key = os.environ.get("EIA_API_KEY") or "DEMO_KEY"      # empty secret -> demo key
     out = {}
     for t in ["D", "DF"]:
         rows, off = [], 0

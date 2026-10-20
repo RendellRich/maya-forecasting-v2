@@ -1,5 +1,5 @@
 # Daily Maya v2 run: 16:15 UTC = 10:15 am MDT / 9:15 am MST, just after the buy-time demand reading is published.
-# Needs a repository secret EIA_API_KEY (free key from https://www.eia.gov/opendata/). Not active until pushed to GitHub.
+# Uses the repository secret EIA_API_KEY if set (free key: https://www.eia.gov/opendata/); otherwise EIA's rate-limited DEMO_KEY.
 name: Maya v2 daily forecast
 on:
   schedule:
@@ -7,9 +7,13 @@ on:
   workflow_dispatch: {}
 permissions:
   contents: write
+concurrency:
+  group: daily-forecast
+  cancel-in-progress: false
 jobs:
   forecast:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,6 +28,7 @@ jobs:
         run: |
           git config user.name "maya-bot"
           git config user.email "maya-bot@users.noreply.github.com"
-          git add live/
+          git add live/ pipeline/data/pace_prices_2026.csv
           git diff --cached --quiet || git commit -m "Daily forecast $(date -u +%Y-%m-%d)"
+          git pull --rebase --autostash origin main
           git push
