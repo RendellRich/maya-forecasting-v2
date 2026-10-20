@@ -1,0 +1,46 @@
+period,series,forecast,under_pct,target_under_pct
+A backtest 2024-25,Demand,Maya P50,50.5,50
+A backtest 2024-25,Demand,Maya P75,25.4,25
+A backtest 2024-25,Demand,Maya P90,10.4,10
+A backtest 2024-25,Demand,Maya P95,5.3,5
+A backtest 2024-25,Demand,Maya P98,2.2,2
+A backtest 2024-25,Net load,Maya P50,50.5,50
+A backtest 2024-25,Net load,Maya P75,25.4,25
+A backtest 2024-25,Net load,Maya P90,10.4,10
+A backtest 2024-25,Net load,Maya P95,5.3,5
+A backtest 2024-25,Net load,Maya P98,2.2,2
+A backtest 2024-25,Renewable,Maya P02,1.9,2
+A backtest 2024-25,Renewable,Maya P05,5.4,5
+A backtest 2024-25,Renewable,Maya P10,10.4,10
+A backtest 2024-25,Renewable,Maya P25,25.3,25
+A backtest 2024-25,Renewable,Maya P50,52.1,50
+B forward test 2026,Demand,Maya P50,49.0,50
+B forward test 2026,Demand,Maya P75,24.4,25
+B forward test 2026,Demand,Maya P90,9.3,10
+B forward test 2026,Demand,Maya P95,4.5,5
+B forward test 2026,Demand,Maya P98,1.8,2
+B forward test 2026,Net load,Maya P50,49.2,50
+B forward test 2026,Net load,Maya P75,24.5,25
+B forward test 2026,Net load,Maya P90,9.4,10
+B forward test 2026,Net load,Maya P95,4.6,5
+B forward test 2026,Net load,Maya P98,1.7,2
+B forward test 2026,Renewable,Maya P02,2.6,2
+B forward test 2026,Renewable,Maya P05,6.0,5
+B forward test 2026,Renewable,Maya P10,13.2,10
+B forward test 2026,Renewable,Maya P25,27.3,25
+B forward test 2026,Renewable,Maya P50,50.1,50
+All,Demand,Maya P50,50.1,50
+All,Demand,Maya P75,25.2,25
+All,Demand,Maya P90,10.1,10
+All,Demand,Maya P95,5.1,5
+All,Demand,Maya P98,2.1,2
+All,Net load,Maya P50,50.1,50
+All,Net load,Maya P75,25.2,25
+All,Net load,Maya P90,10.1,10
+All,Net load,Maya P95,5.1,5
+All,Net load,Maya P98,2.1,2
+All,Renewable,Maya P02,2.1,2
+All,Renewable,Maya P05,5.6,5
+All,Renewable,Maya P10,11.1,10
+All,Renewable,Maya P25,25.9,25
+All,Renewable,Maya P50,51.5,50

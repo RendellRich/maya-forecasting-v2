@@ -1,0 +1,79 @@
+period,series,forecast,hours,under_pct,avg_short_MWh,avg_surplus_MWh,worst_short_MWh,p99_short_MWh,MAE
+A backtest 2024-25,Demand,PACE,15984,29.4,45.4,209.2,991.0,429.0,254.5
+A backtest 2024-25,Demand,PACE + cushion P75,15984,25.9,36.3,208.0,1039.0,413.0,244.3
+A backtest 2024-25,Demand,PACE + cushion P90,15984,10.2,11.9,326.1,925.0,276.0,338.1
+A backtest 2024-25,Demand,PACE + cushion P95,15984,5.0,5.9,406.7,857.0,188.0,412.6
+A backtest 2024-25,Demand,PACE + cushion P98,15984,2.0,2.4,522.0,701.0,83.0,524.4
+A backtest 2024-25,Demand,Maya P50,15966,50.5,89.6,88.2,1081.0,558.0,177.8
+A backtest 2024-25,Demand,Maya P75,15966,25.4,34.7,177.6,801.0,402.0,212.3
+A backtest 2024-25,Demand,Maya P90,15966,10.4,11.7,293.0,608.0,267.0,304.6
+A backtest 2024-25,Demand,Maya P95,15966,5.3,5.4,383.2,523.0,175.0,388.6
+A backtest 2024-25,Demand,Maya P98,15966,2.2,2.1,510.0,436.0,82.0,512.1
+A backtest 2024-25,Net load,PACE - persistence,15984,29.4,47.5,211.3,991.0,489.0,258.8
+A backtest 2024-25,Net load,PACE + cushion P75,15984,25.9,38.2,211.4,1036.0,446.0,249.6
+A backtest 2024-25,Net load,PACE + cushion P90,15984,10.2,13.1,333.5,925.0,306.0,346.6
+A backtest 2024-25,Net load,PACE + cushion P95,15984,5.0,6.1,432.6,825.0,207.0,438.7
+A backtest 2024-25,Net load,PACE + cushion P98,15984,2.0,2.3,562.3,652.0,88.0,564.5
+A backtest 2024-25,Net load,Maya P50,15966,50.5,89.6,88.9,1130.0,563.0,178.5
+A backtest 2024-25,Net load,Maya P75,15966,25.4,34.7,178.7,835.0,405.0,213.4
+A backtest 2024-25,Net load,Maya P90,15966,10.4,11.7,295.2,652.0,268.0,306.9
+A backtest 2024-25,Net load,Maya P95,15966,5.3,5.5,384.5,539.0,178.0,390.0
+A backtest 2024-25,Net load,Maya P98,15966,2.2,2.0,520.5,424.0,79.0,522.5
+A backtest 2024-25,Renewable,Persistence,15984,26.0,9.4,9.3,330.0,170.0,18.6
+A backtest 2024-25,Renewable,Maya P02,15967,1.9,0.3,62.4,110.0,3.0,62.7
+A backtest 2024-25,Renewable,Maya P05,15967,5.4,0.8,27.5,146.0,26.0,28.4
+A backtest 2024-25,Renewable,Maya P10,15967,10.4,1.4,19.6,221.0,39.0,21.0
+A backtest 2024-25,Renewable,Maya P25,15967,25.3,2.5,13.6,221.0,55.0,16.1
+A backtest 2024-25,Renewable,Maya P50,15967,52.1,4.7,8.4,252.0,80.0,13.2
+B forward test 2026,Demand,PACE,5759,26.8,49.0,294.0,882.0,534.0,343.0
+B forward test 2026,Demand,PACE + cushion P75,5759,21.3,41.9,320.6,1045.0,558.0,362.5
+B forward test 2026,Demand,PACE + cushion P90,5759,8.4,13.4,484.5,738.0,327.0,497.9
+B forward test 2026,Demand,PACE + cushion P95,5759,4.2,5.8,595.2,593.0,189.0,600.9
+B forward test 2026,Demand,PACE + cushion P98,5759,1.9,1.9,717.2,444.0,53.0,719.1
+B forward test 2026,Demand,Maya P50,5684,49.0,106.7,104.3,1342.0,718.0,211.0
+B forward test 2026,Demand,Maya P75,5684,24.4,42.6,214.3,1110.0,503.0,257.0
+B forward test 2026,Demand,Maya P90,5684,9.3,14.0,364.6,910.0,313.0,378.6
+B forward test 2026,Demand,Maya P95,5684,4.5,6.1,478.8,807.0,200.0,484.9
+B forward test 2026,Demand,Maya P98,5684,1.8,2.6,617.5,647.0,68.0,620.1
+B forward test 2026,Net load,PACE - persistence,5759,26.5,50.4,295.8,960.0,545.0,346.3
+B forward test 2026,Net load,PACE + cushion P75,5759,21.3,43.5,324.1,1171.0,577.0,367.6
+B forward test 2026,Net load,PACE + cushion P90,5759,8.4,13.9,494.0,864.0,351.0,507.9
+B forward test 2026,Net load,PACE + cushion P95,5759,4.3,6.3,602.5,701.0,225.0,608.7
+B forward test 2026,Net load,PACE + cushion P98,5759,1.8,2.1,734.0,475.0,69.0,736.1
+B forward test 2026,Net load,Maya P50,5684,49.2,107.0,105.4,1341.0,737.0,212.5
+B forward test 2026,Net load,Maya P75,5684,24.5,42.6,216.3,1119.0,513.0,258.9
+B forward test 2026,Net load,Maya P90,5684,9.4,13.9,367.7,931.0,317.0,381.6
+B forward test 2026,Net load,Maya P95,5684,4.6,6.3,477.5,849.0,193.0,483.8
+B forward test 2026,Net load,Maya P98,5684,1.7,2.5,617.9,682.0,68.0,620.4
+B forward test 2026,Renewable,Persistence,5856,24.4,9.1,9.4,329.0,148.0,18.5
+B forward test 2026,Renewable,Maya P02,5856,2.6,0.3,53.9,70.0,11.0,54.2
+B forward test 2026,Renewable,Maya P05,5856,6.0,0.8,33.7,116.0,27.0,34.5
+B forward test 2026,Renewable,Maya P10,5856,13.2,1.7,25.0,168.0,43.0,26.7
+B forward test 2026,Renewable,Maya P25,5856,27.3,4.1,13.2,190.0,67.0,17.2
+B forward test 2026,Renewable,Maya P50,5856,50.1,8.1,5.0,216.0,94.0,13.1
+All,Demand,PACE,21743,28.7,46.3,231.6,991.0,462.0,278.0
+All,Demand,PACE + cushion P75,21743,24.7,37.7,237.8,1045.0,454.0,275.6
+All,Demand,PACE + cushion P90,21743,9.7,12.3,368.1,925.0,286.0,380.4
+All,Demand,PACE + cushion P95,21743,4.8,5.9,456.6,857.0,188.0,462.5
+All,Demand,PACE + cushion P98,21743,2.0,2.3,573.7,701.0,76.0,576.0
+All,Demand,Maya P50,21650,50.1,94.1,92.4,1342.0,611.0,186.5
+All,Demand,Maya P75,21650,25.2,36.8,187.2,1110.0,433.0,224.0
+All,Demand,Maya P90,21650,10.1,12.3,311.8,910.0,278.0,324.1
+All,Demand,Maya P95,21650,5.1,5.6,408.3,807.0,179.0,413.9
+All,Demand,Maya P98,21650,2.1,2.2,538.3,647.0,81.0,540.5
+All,Net load,PACE - persistence,21743,28.6,48.3,233.7,991.0,514.0,282.0
+All,Net load,PACE + cushion P75,21743,24.7,39.6,241.3,1171.0,482.0,280.8
+All,Net load,PACE + cushion P90,21743,9.7,13.3,376.0,925.0,314.0,389.3
+All,Net load,PACE + cushion P95,21743,4.8,6.2,477.6,825.0,210.0,483.7
+All,Net load,PACE + cushion P98,21743,2.0,2.2,607.8,652.0,82.0,610.0
+All,Net load,Maya P50,21650,50.1,94.2,93.2,1341.0,620.0,187.4
+All,Net load,Maya P75,21650,25.2,36.7,188.6,1119.0,440.0,225.3
+All,Net load,Maya P90,21650,10.1,12.2,314.3,931.0,282.0,326.5
+All,Net load,Maya P95,21650,5.1,5.7,408.9,849.0,187.0,414.6
+All,Net load,Maya P98,21650,2.1,2.1,546.1,682.0,78.0,548.2
+All,Renewable,Persistence,21840,25.6,9.3,9.3,330.0,162.0,18.6
+All,Renewable,Maya P02,21823,2.1,0.3,60.1,110.0,7.0,60.4
+All,Renewable,Maya P05,21823,5.6,0.8,29.2,146.0,26.0,30.0
+All,Renewable,Maya P10,21823,11.1,1.4,21.1,221.0,40.0,22.5
+All,Renewable,Maya P25,21823,25.9,2.9,13.5,221.0,58.0,16.4
+All,Renewable,Maya P50,21823,51.5,5.6,7.5,252.0,86.0,13.2

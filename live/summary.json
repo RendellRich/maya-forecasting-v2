@@ -1,0 +1,17 @@
+{
+  "run_utc": "2026-10-20 04:00:00",
+  "buy_day": "2026-10-21",
+  "provisional": true,
+  "newest_demand_hour_utc": "2026-10-20 01:00:00",
+  "buy_deadline_utc": "2026-10-20 16:00:00",
+  "tier": "Green",
+  "risk": 0.301,
+  "buy_level": "P95",
+  "buy_net_MWh_total": 113652.0,
+  "buy_demand_MWh_total": 116966.0,
+  "p50_demand_MWh_total": 105420.0,
+  "hours": 19,
+  "live_days_scored": 47,
+  "weather": "ECMWF IFS 0.25 (Open-Meteo), latest run for the buy day",
+  "note": "Provisional: run before the buy-time demand reading was published; the official run is after 16:15 UTC."
+}

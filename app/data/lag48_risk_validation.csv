@@ -1,0 +1,28 @@
+period,version,tier,days,share_of_days_pct,days_with_a_short_hour_pct,avg_short_hours,avg_worst_short_MWh,avg_worst_P50_miss_MWh
+2025,v1 width only,Green,219,60.0,29.7,1.62,47.0,395.0
+2025,v1 width only,Yellow,98,26.8,29.6,0.97,45.0,512.0
+2025,v1 width only,Red,48,13.2,2.1,0.02,1.0,559.0
+2025,v2 classifier,Green,247,67.7,20.2,0.8,29.0,437.0
+2025,v2 classifier,Yellow,99,27.1,38.4,2.26,68.0,483.0
+2025,v2 classifier,Red,19,5.2,36.8,1.53,43.0,411.0
+2025,AUC,v1 width,365,0.411,,,,
+2025,AUC,v2 classifier,365,0.65,,,,
+2025,Brier,v2 classifier,365,0.186,,,,
+2026,v1 width only,Green,129,54.2,24.8,0.89,34.0,454.0
+2026,v1 width only,Yellow,92,38.7,40.2,1.49,79.0,717.0
+2026,v1 width only,Red,17,7.1,11.8,0.65,33.0,854.0
+2026,v2 classifier,Green,172,72.3,25.0,0.99,42.0,560.0
+2026,v2 classifier,Yellow,51,21.4,43.1,1.43,79.0,643.0
+2026,v2 classifier,Red,15,6.3,40.0,1.27,71.0,669.0
+2026,AUC,v1 width,238,0.529,,,,
+2026,AUC,v2 classifier,238,0.638,,,,
+2026,Brier,v2 classifier,238,0.208,,,,
+2025-26,v1 width only,Green,348,57.7,27.9,1.35,42.0,417.0
+2025-26,v1 width only,Yellow,190,31.5,34.7,1.22,62.0,611.0
+2025-26,v1 width only,Red,65,10.8,4.6,0.18,10.0,636.0
+2025-26,v2 classifier,Green,419,69.5,22.2,0.88,34.0,488.0
+2025-26,v2 classifier,Yellow,150,24.9,40.0,1.98,72.0,537.0
+2025-26,v2 classifier,Red,34,5.6,38.2,1.41,55.0,525.0
+2025-26,AUC,v1 width,603,0.46,,,,
+2025-26,AUC,v2 classifier,603,0.647,,,,
+2025-26,Brier,v2 classifier,603,0.195,,,,
