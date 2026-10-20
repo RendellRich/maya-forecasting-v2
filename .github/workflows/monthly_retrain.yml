@@ -22,11 +22,12 @@ jobs:
           cache: pip
       - run: pip install -r pipeline/requirements.txt
       - run: python pipeline/retrain.py
+      - run: python pipeline/week_ahead.py
       - name: Commit the result
         run: |
           git config user.name "maya-bot"
           git config user.email "maya-bot@users.noreply.github.com"
-          git add live/retrain_log.csv pipeline/models/lag48/
+          git add live/retrain_log.csv pipeline/models/lag48/ app/data/week_ahead_eval.csv
           git diff --cached --quiet || git commit -m "Monthly retrain check $(date -u +%Y-%m-%d)"
           git pull --rebase -X theirs --autostash origin main
           git push

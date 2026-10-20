@@ -129,7 +129,7 @@ def cached_weather(master_end, target_day):
         stored[k] = pd.read_csv(f, parse_dates=["timestamp_utc"]).set_index("timestamp_utc") if os.path.exists(f) else pd.DataFrame()
     have = stored["latest"].index.max() if not stored["latest"].empty else None
     start = start_all if have is None else max(start_all, (have - pd.Timedelta(days=4)).normalize())
-    new_latest, new_prev1 = fetch_weather(start.date(), (target_day + pd.Timedelta(days=2)).date())
+    new_latest, new_prev1 = fetch_weather(start.date(), (target_day + pd.Timedelta(days=8)).date())   # +8: week-ahead outlook
     out = []
     for k, new in [("latest", new_latest), ("prev1", new_prev1)]:
         old = stored[k]
@@ -532,6 +532,16 @@ def run(now_utc=None):
     tgt_rows.reset_index().round(1).to_csv(os.path.join(LIVE, "next_buy_day.csv"), index=False)
     drivers.to_csv(os.path.join(LIVE, "drivers.csv"))
     json.dump(summary, open(os.path.join(LIVE, "summary.json"), "w"), indent=2)
+    # --- week-ahead outlook: daily net-load ranges for the 6 days after the buy day
+    try:
+        import week_ahead
+        known_net = (df[D] - df[R])[idx <= now_utc]
+        wk = week_ahead.outlook(known_net, w_latest, target_day)
+        wk.round(0).to_csv(os.path.join(LIVE, "week_ahead.csv"), index=False)
+        print(f"  week-ahead outlook: {len(wk)} day(s)", flush=True)
+    except Exception as e:
+        print(f"  week-ahead step skipped ({e.__class__.__name__}: {e})", flush=True)
+
     # --- strategies: hourly spike risk, bid ladder for the buy day, and the scored strategy history
     try:
         import strategies

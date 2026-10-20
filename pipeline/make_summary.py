@@ -108,7 +108,8 @@ def build():
              Paragraph("Every morning before the 10 am Mountain day-ahead deadline, Maya forecasts tomorrow's net load for the PacifiCorp East "
                        "area (demand minus Milford, Utah renewable output) as a range, not a single number, and turns it into a buy plan. "
                        "Buying short means paying the real-time price for the gap, so the plan is built to be short rarely and on purpose. "
-                       "It also flags hours at risk of a price spike and suggests when to run flexible load.", st_b),
+                       "It also flags hours at risk of a price spike, suggests when to run flexible load, and gives a 7-day outlook of daily "
+                       "net load for weekly planning.", st_b),
              Paragraph("Results", st_h)]
     rows = [["", "Maya", "Comparison"],
             ["Best-guess error, 2026 (MWh per hour)", f"{n['mae_maya']:,.0f}", f"PACE's own forecast: {n['mae_pace']:,.0f} ({(n['mae_pace'] - n['mae_maya']) / n['mae_pace'] * 100:.0f}% higher)"],

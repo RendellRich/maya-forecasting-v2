@@ -230,6 +230,38 @@ with tab_buy:
                           legend=dict(orientation="h", y=1.08), hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
+        wk_f = LIVE / "week_ahead.csv"
+        if wk_f.exists() and pre == "net":
+            WK = pd.read_csv(wk_f, parse_dates=["day"])
+            if len(WK):
+                for c in ["P10", "P50", "P90", "P95"]:
+                    WK[c] = WK[c] * SCALE
+                with st.expander("Week ahead: daily net load for the next 7 days", expanded=True):
+                    full = int(T.best.notna().sum()) == 24      # buy day only once all 24 hours are forecast
+                    days = ([bday] if full else []) + list(WK.day)
+                    p50 = ([T.best.sum()] if full else []) + list(WK.P50)
+                    lo = ([T.best.sum()] if full else []) + list(WK.P10)
+                    hi = ([T[f"{pre}_P95"].sum()] if full else []) + list(WK.P95)
+                    fw = go.Figure()
+                    fw.add_bar(x=days, y=[h - l for h, l in zip(hi, lo)], base=lo, marker_color=C_BAND, name="Range (P10 to P95)",
+                               hovertemplate="%{x|%a %b %d}: %{base:,.0f} to %{y:,.0f} more<extra></extra>")
+                    fw.add_scatter(x=days, y=p50, mode="markers+lines", name="Best guess (P50)", line=dict(color=C_MAYA, width=2))
+                    if full:
+                        fw.add_scatter(x=[bday], y=[T.buy.sum()], mode="markers", name=f"Buy day: planned buy ({use})",
+                                       marker=dict(color=C_BUY, size=12, symbol="diamond"))
+                    fw.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis_title="MWh per day",
+                                     legend=dict(orientation="h", y=1.15), xaxis=dict(tickformat="%a %b %d"))
+                    st.plotly_chart(fw, use_container_width=True)
+                    ev_f = DATA / "week_ahead_eval.csv"
+                    if ev_f.exists():
+                        EV = pd.read_csv(ev_f)
+                        st.caption(f"Days 2 to 7 come from a separate daily-total model run on ECMWF forecasts 2 to 7 days out. Tested on "
+                                   f"Aug 2024 to Oct 2026 with the forecasts available at each lead: daily error "
+                                   f"{EV.mape_P50.min():.1f}% to {EV.mape_P50.max():.1f}%, {EV.better_than_naive_pct.min():.0f}% to "
+                                   f"{EV.better_than_naive_pct.max():.0f}% better than repeating the same weekday last week; the actual came in "
+                                   f"above P95 on {EV.above_P95_pct.min():.0f}% to {EV.above_P95_pct.max():.0f}% of days. Use it for weekly "
+                                   "planning; the day-ahead buy should still follow the hourly plan above.")
+
         left, right = st.columns([3, 2])
         with right:
             st.subheader("Why tomorrow looks like this")
@@ -674,7 +706,10 @@ pattern follows PACE's net load. Replace the 100 MW placeholder with their real 
 estimate, forecasts the next buy day, recalibrates, and scores yesterday. The track record tab is that job run over every day since
 the training data ends.
 
-**9. Monthly retraining.** On the 1st of each month a challenger model is trained on all data up to 45 days ago and compared
+**9. Week-ahead outlook.** A separate model forecasts daily net-load totals 2 to 7 days out from ECMWF forecasts at those lead
+times, with ranges calibrated per lead time. Daily error is about 3%, roughly 40% better than repeating last week.
+
+**10. Monthly retraining.** On the 1st of each month a challenger model is trained on all data up to 45 days ago and compared
 with the current model on those last 45 days, which neither has seen. It replaces the current model only if its error is at
 least 1% lower on demand and no worse on renewable. Past forecasts are archived as issued and never recomputed, so a new model
 cannot rewrite the track record.
