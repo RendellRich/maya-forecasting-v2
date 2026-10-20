@@ -18,4 +18,8 @@ h[keep].astype({c: "float32" for c in keep if c != "period"}).to_parquet(os.path
 d = pd.read_csv(os.path.join(HERE, "out", "lag48", "daily_risk.csv"), index_col=0)
 d[["risk_v2", "tier_v2", "label", "short_hours", "max_short_vs_P95", "max_abs_err_P50"]].dropna(subset=["risk_v2"]).to_csv(
     os.path.join(APP, "backtest_daily_risk.csv"))
+rb = os.path.join(HERE, "out", "rolling_backtest")
+for f, out in [("quarterly_mae.csv", "rolling_quarterly_mae.csv"), ("dm_tests.csv", "rolling_dm_tests.csv")]:
+    if os.path.exists(os.path.join(rb, f)):
+        shutil.copy(os.path.join(rb, f), os.path.join(APP, out))
 print("app data written to", APP, sorted(os.listdir(APP)))

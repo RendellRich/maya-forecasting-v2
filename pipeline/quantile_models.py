@@ -40,7 +40,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 #        demand from two days earlier available (John's 48 h rule). Default.
 MIN_LAG = int(os.environ.get("MAYA_MIN_LAG", "48"))
 DATA = os.path.join(HERE, "data")
-OUT, MOD = os.path.join(HERE, "out", f"lag{MIN_LAG}"), os.path.join(HERE, "models", f"lag{MIN_LAG}")
+# MAYA_FEATURES: v2 = production inputs as of Oct 20; v3 = adds weekday / holiday / school calendar, population-weighted
+# city weather (cities.py) and tuned settings for the upper quantile GBMs (time-series CV on 2022-2023).
+FEATURES = os.environ.get("MAYA_FEATURES", "v2")
+SUFFIX = "" if FEATURES == "v2" else f"_{FEATURES}"
+OUT, MOD = os.path.join(HERE, "out", f"lag{MIN_LAG}{SUFFIX}"), os.path.join(HERE, "models", f"lag{MIN_LAG}{SUFFIX}")
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(MOD, exist_ok=True)
 
@@ -71,10 +75,24 @@ fc["Wind Speed 80m (m/s)"] = fc["Wind Speed 10m (m/s)"].clip(lower=0.01) * 8 ** 
 fc["Clear-sky Index"] = np.where(cs >= 20, (fc["GHI (W/m2)"] / cs).clip(0, 1.5), np.nan)
 fc["Installed Solar DC (MW)"] = df["Installed Solar DC (MW)"]
 CAL = ["hour_sin", "hour_cos", "doy_sin", "doy_cos", "month", "is_weekend"]
+CAL_D = list(CAL)
+TEMP_COL = "Temperature (C)"
+if FEATURES == "v3":
+    from maya_common import CAL_EXTRA, CITY_COLS, GBM_UPPER, calendar_extra, city_inputs
+    df = df.join(calendar_extra(df.index))
+    era = pd.read_csv(os.path.join(DATA, "cities_era5_2019_2026.csv.gz"), parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+    cfc = pd.read_csv(os.path.join(DATA, "cities_ecmwf_dayahead_2024_2026.csv.gz"), parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+    a, f = city_inputs(era, cfc, df.index)
+    for c in CITY_COLS:
+        df[c], fc[c] = a[c], f[c]
+    CAL_D = CAL + CAL_EXTRA
 
 D, R = "Demand (MWh)", "Site Renewable Output Modeled (MWh)"
 WX_D = ["GHI (W/m2)", "Temperature (C)", "Wind Speed 10m (m/s)", "Wind Speed 100m (m/s)", "Wind Speed 80m (m/s)"]
 SEQ_D = ["Temperature (C)", "GHI (W/m2)"]
+if FEATURES == "v3":
+    WX_D = WX_D + CITY_COLS
+    SEQ_D = SEQ_D + ["pw_temp"]
 WX_R = ["GHI (W/m2)", "Temperature (C)", "DNI (W/m2)", "DHI (W/m2)", "Installed Solar DC (MW)", "Cloud Cover (%)", "Clear-sky Index"]
 
 last_demand = df[D].last_valid_index()
@@ -116,17 +134,17 @@ def buy_time_features(y, temp_target):
     e["last_known_change_1d"] = e["last_known"] - y.reindex(last_known - pd.Timedelta(days=1)).values
     e["hours_since_known"] = (ts - last_known) / pd.Timedelta(hours=1)
     e["same_hour_latest"] = np.where(ts - pd.Timedelta(hours=24) <= last_known, y.shift(24).values, y.shift(48).values)
-    e["temp_change_vs_lag"] = temp_target - df["Temperature (C)"].shift(MIN_LAG)       # target temp vs. temp at lag hour
+    e["temp_change_vs_lag"] = temp_target - df[TEMP_COL].shift(MIN_LAG)       # target temp vs. temp at lag hour
     return e
 
 
 ISSUE_HOUR_UTC = 16          # 10 am MDT / 9 am MST
-G_act = pd.concat([df[WX_D + CAL], lags(y)], axis=1)
+G_act = pd.concat([df[WX_D + CAL_D], lags(y)], axis=1)
 G_fc = with_fc(G_act, WX_D)
-now_act = df[WX_D + CAL]
+now_act = df[WX_D + CAL_D]
 now_fc = with_fc(now_act, WX_D)
 if MIN_LAG >= 48:
-    e_act, e_fc = buy_time_features(y, df["Temperature (C)"]), buy_time_features(y, fc["Temperature (C)"])
+    e_act, e_fc = buy_time_features(y, df[TEMP_COL]), buy_time_features(y, fc[TEMP_COL])
     G_act, G_fc = pd.concat([G_act, e_act], axis=1), pd.concat([G_fc, e_fc], axis=1)
     now_act, now_fc = pd.concat([now_act, e_act], axis=1), pd.concat([now_fc, e_fc], axis=1)
 seq_df = pd.concat([y.rename("y"), df[SEQ_D], df[["hour_sin", "hour_cos", "doy_sin", "doy_cos"]]], axis=1)
@@ -160,7 +178,7 @@ def fit_demand(train_years, tag):
     gbms = {}
     for q in QD:
         t0 = time.time()
-        gbms[q] = HistGradientBoostingRegressor(loss="quantile", quantile=q, **GBM_ARGS).fit(G_act.iloc[tr], y.values[tr])
+        gbms[q] = HistGradientBoostingRegressor(loss="quantile", quantile=q, **(GBM_UPPER if FEATURES == "v3" and q > 0.5 else GBM_ARGS)).fit(G_act.iloc[tr], y.values[tr])
         print(f"  demand GBM {tag} {qname(q)} {time.time() - t0:.0f}s", flush=True)
     sc = dict(mu_s=seq_df.iloc[tr].mean(), sd_s=seq_df.iloc[tr].std().replace(0, 1),
               mu_n=now_act.iloc[tr].mean(), sd_n=now_act.iloc[tr].std().replace(0, 1))

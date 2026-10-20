@@ -44,7 +44,7 @@ WX = ["Temperature (C)", "GHI (W/m2)", "DNI (W/m2)", "DHI (W/m2)", "Cloud Cover 
 LOG = os.path.join(L.LIVE, "retrain_log.csv")
 
 
-def assemble():
+def assemble(v3=False):
     """Hourly history (actuals + actual-weather stand-ins) and the day-ahead forecast weather for every hour."""
     m, fc_bt = L.load_master()
     hl = pd.read_parquet(os.path.join(L.LIVE, "history_live.parquet"))
@@ -58,6 +58,19 @@ def assemble():
     later = idx > fc_bt.index.max()
     for c in live_fc.columns:
         fcw.loc[later, c] = live_fc[c].reindex(idx[later]).values
+    if v3:   # city weather: ERA5 + archived day-ahead forecasts for history, live history after
+        from maya_common import CITY_COLS, city_inputs
+        era = L.update_city_era5()
+        cfc = pd.read_csv(os.path.join(L.DATA, "cities_ecmwf_dayahead_2024_2026.csv.gz"), parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+        raw_fc = cfc
+        live_raw = os.path.join(L.DATA, "city_weather_live_prev1.csv")
+        if os.path.exists(live_raw):     # live day-ahead forecasts after the archive ends
+            lr = pd.read_csv(live_raw, parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+            raw_fc = pd.concat([cfc, lr[lr.index > cfc.index.max()]])
+        lat = os.path.join(L.DATA, "city_weather_live_latest.csv")
+        a, f = city_inputs(era, raw_fc, idx, pd.read_csv(lat, parse_dates=["timestamp_utc"]).set_index("timestamp_utc") if os.path.exists(lat) else None)
+        for c in CITY_COLS:
+            df[c], fcw[c] = a[c].values, f[c].values
     return df, fcw
 
 
@@ -66,14 +79,17 @@ def pinball(y, pred, q):
     return np.nanmean(np.maximum(q * e, (q - 1) * e))
 
 
-def fit(df, fcw, end):
+def fit(df, fcw, end, v3=False):
     """Train demand (GBM + LSTM quantiles) and renewable (GBM quantiles) on data before `end`."""
     year = df.index.year.values
-    F_act = L.build_features(df, df[WX])               # training inputs: actual weather (as for the production models)
+    from maya_common import CITY_COLS, GBM_UPPER
+    wx = WX + (CITY_COLS if v3 else [])
+    F_act = L.build_features(df, df[wx], v3=v3)        # training inputs: actual weather (as for the production models)
     y = df[L.D].astype(float)
     G, now, seq_df, seq_ok = F_act["G"], F_act["now"], F_act["seq_df"], F_act["seq_ok"]
     tr = np.where(y.notna().values & G.notna().all(axis=1).values & seq_ok & (year != 2020) & (df.index < end))[0]
-    gbms = {q: HistGradientBoostingRegressor(loss="quantile", quantile=q, **GBM_ARGS).fit(G.iloc[tr], y.values[tr]) for q in QD}
+    gbms = {q: HistGradientBoostingRegressor(loss="quantile", quantile=q, **(GBM_UPPER if v3 and q > 0.5 else GBM_ARGS))
+            .fit(G.iloc[tr], y.values[tr]) for q in QD}
     sc = dict(mu_s=seq_df.iloc[tr].mean(), sd_s=seq_df.iloc[tr].std().replace(0, 1),
               mu_n=now.iloc[tr].mean(), sd_n=now.iloc[tr].std().replace(0, 1))
     S = torch.tensor(((seq_df - sc["mu_s"]) / sc["sd_s"]).fillna(0).values, dtype=torch.float32)
@@ -101,7 +117,7 @@ def fit(df, fcw, end):
           "scaler": {k: v.to_dict() for k, v in sc.items()}, "seq_cols": list(seq_df.columns), "now_cols": list(now.columns),
           "window": L.WIN, "gap": L.MIN_LAG}
     # renewable: trained on day-ahead forecast weather, as in production (ECMWF archive starts Feb 2024)
-    F_fc = L.build_features(df, fcw)
+    F_fc = L.build_features(df, fcw, v3=v3)
     H = F_fc["H"]
     yr = df[L.R].astype(float)
     need = [c for c in H.columns if c != "Clear-sky Index"]
@@ -138,17 +154,18 @@ def save(models, version):
 
 def main(dry_run=False):
     t0 = time.time()
-    df, fcw = assemble()
+    champ = L.load_models()
+    v3 = "dow" in champ[0][0.5].feature_names_in_
+    df, fcw = assemble(v3)
     last = df[L.D].last_valid_index()
     hold_end = last.normalize()
     hold_start = hold_end - pd.Timedelta(days=HOLDOUT_DAYS)
     train_end = hold_start - pd.Timedelta(days=2)
-    F_fc = L.build_features(df, fcw)
+    F_fc = L.build_features(df, fcw, v3=v3)
     mask = np.asarray((df.index >= hold_start) & (df.index < hold_end))
     print(f"holdout {hold_start.date()} .. {hold_end.date()} | challenger trained on data before {train_end.date()}", flush=True)
-    champ = L.load_models()
     c_dem, c_ren, n = score(champ, F_fc, df, mask)
-    chal = fit(df, fcw, train_end)
+    chal = fit(df, fcw, train_end, v3)
     ch_models = (chal[0], chal[1], {k: pd.Series(v) for k, v in chal[3]["scaler"].items()}, chal[3], chal[4])
     h_dem, h_ren, _ = score(ch_models, F_fc, df, mask)
     gain = (c_dem - h_dem) / c_dem
@@ -160,8 +177,8 @@ def main(dry_run=False):
                decision="promoted" if promote else ("dry run" if dry_run else "kept current model"))
     if promote:
         final_end = last.normalize() - pd.Timedelta(days=1)
-        version = f"v2.{pd.Timestamp.now('UTC'):%Y%m%d} (retrained through {final_end.date()})"
-        save(fit(df, fcw, final_end), version)
+        version = f"{'v3' if v3 else 'v2'}.{pd.Timestamp.now('UTC'):%Y%m%d} (retrained through {final_end.date()})"
+        save(fit(df, fcw, final_end, v3), version)
         row["new_model"] = version
     log = pd.concat([pd.read_csv(LOG), pd.DataFrame([row])]) if os.path.exists(LOG) else pd.DataFrame([row])
     log.to_csv(LOG, index=False)

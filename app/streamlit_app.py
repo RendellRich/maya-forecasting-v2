@@ -671,6 +671,26 @@ with tab_how:
                      [["Checked (UTC)", "Test from", "Test to", "Current model error", "Retrained model error", "Improvement %", "Decision"]]
                      .iloc[::-1], hide_index=True, use_container_width=True)
         st.caption("Error = demand pinball loss (average quantile loss, MWh) on held-out days. Lower is better.")
+    rb = DATA / "rolling_quarterly_mae.csv"
+    if rb.exists():
+        st.subheader("Rolling test: every quarter since 2022")
+        Q = pd.read_csv(rb)
+        fig = go.Figure()
+        for col, name, color in [("pace_MAE", "PACE's own forecast", C_BASE), ("maya_v2_MAE", "Maya v2 inputs", "#9a9a9a"), ("maya_v3_MAE", "Maya v3 inputs (in use)", C_BUY)]:
+            fig.add_scatter(x=Q.quarter, y=Q[col], name=name, mode="lines+markers", line=dict(color=color, width=3 if "v3" in col else 2))
+        fig.add_vrect(x0=-0.5, x1=8.5, fillcolor="#888888", opacity=0.08, line_width=0)
+        fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10), yaxis_title="Best-guess demand error (MWh per hour)",
+                          legend=dict(orientation="h", y=1.12))
+        st.plotly_chart(fig, use_container_width=True)
+        T = pd.read_csv(DATA / "rolling_dm_tests.csv")
+        T = T[T.period == "forecast weather"][["comparison", "days", "mean_diff", "dm_stat", "p_value"]]
+        st.dataframe(T.rename(columns={"comparison": "Comparison", "days": "Days", "mean_diff": "Error difference (MWh/h)",
+                                       "dm_stat": "Diebold-Mariano statistic", "p_value": "p-value"}).round(3),
+                     hide_index=True, use_container_width=True)
+        st.caption("Each quarter is forecast by a model trained only on earlier years (2020 left out). Shaded quarters (2022 to "
+                   "Q1 2024) use actual weather because no forecast archive exists before February 2024, so they flatter both "
+                   "Maya versions; from Q2 2024 on, inputs are the real day-ahead ECMWF forecasts. Gradient boosting best guess "
+                   "only. The test table covers the forecast-weather quarters; negative = the first model has lower error.")
     st.divider()
     st.markdown("""
 **The question.** Maui Hiva buys power the day before. Buying short means paying same-day prices for the gap, which costs
@@ -683,7 +703,13 @@ P95 means demand should come in above it on only about 5% of hours.
 **2. Daily recalibration.** Every day each level is checked against the last 60 finished days and nudged until it really is
 short that often (adaptive conformal calibration). This is why the coverage chart sits on target in both the backtest and 2026.
 
-**3. Honest inputs.** The buy deadline is taken as 10 am Mountain the day before. Every hour of the buy day then has demand from two
+**3. Inputs.** ECMWF day-ahead weather for the Milford point, plus a population-weighted temperature over eight PACE load
+centers (Salt Lake City, Ogden, Provo, Logan, Cedar City, Rexburg, Casper, Rock Springs). The ECMWF city forecast runs about
+0.9 C colder than the ERA5 reanalysis the model trains on, so it is shifted by its own trailing 60-day bias, which is known at the
+deadline. Calendar inputs cover weekday, federal and Utah holidays (Pioneer Day, Christmas Eve, day after Thanksgiving), the days
+next to them, and Utah school breaks. Together these cut best-guess error by about 12% (model v3.0, Oct 20, 2026).
+
+**3b. Honest timing.** The buy deadline is taken as 10 am Mountain the day before. Every hour of the buy day then has demand from two
 days earlier available, plus the newest reading on the morning of the buy and ECMWF day-ahead weather. The original Maya used
 yesterday's same-hour demand, which is not all known at a morning buy; with that, Maya would be roughly 10 to 20% cheaper again
 (grey line on the Maya vs PACE tab). If Maui Hiva's real deadline is later in the day, the advantage grows.
@@ -693,7 +719,7 @@ yesterday's same-hour demand, which is not all known at a morning buy; with that
 **5. Bid ladder (recommended way to buy).** Block 1, the Maya-rule amount, is bid at any price. Block 2, the extra cushion up to
 P98 on Green days, is bid at a limit equal to the expected real-time price for that hour: recent normal real-time price plus the
 hour's spike risk times a typical spike premium. It is bought only when day-ahead clears at or below that limit. At real May to
-Oct 2026 prices this was the best option tested (-\\$0.20/MWh vs perfect foresight, short on 3.0% of hours).
+Oct 2026 prices this was the best option tested (-\\$0.19/MWh vs perfect foresight, short on 2.7% of hours).
 
 **6. Load shifting.** Expected day-ahead price per hour = the same hour's average day-ahead price over the last 7 days (known
 at the deadline). The Shift load tab moves flexible MW out of tomorrow's most expensive expected hours into the cheapest ones.
@@ -716,7 +742,8 @@ cannot rewrite the track record.
 
 **Data and limits**
 - PACE demand and PACE's day-ahead forecast: EIA-930, hourly. EIA posts PACE's forecast shortly before the day, so it is a benchmark, not an input.
-- Weather: ECMWF IFS 0.25 deg via Open-Meteo, point 38.42 N, 113.02 W. Free for non-commercial use; a commercial plan is needed after handoff.
+- Weather: ECMWF IFS 0.25 deg via Open-Meteo, point 38.42 N, 113.02 W, plus eight load-center cities (ERA5 for training and bias checks).
+  If the city forecast cannot be fetched on a given day, the daily job falls back to the v2 model rather than skip the buy. Free for non-commercial use; a commercial plan is needed after handoff.
 - Milford renewable output is modeled (pvlib tracker model calibrated to EIA-923 monthly plant totals), not metered. Live hours use the
   2025 average calibration until EIA-923 publishes the month.
 - Risk tier skill is modest (AUC about 0.65). It is useful for nudging the level, not a guarantee.

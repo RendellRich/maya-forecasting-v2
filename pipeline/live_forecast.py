@@ -118,6 +118,96 @@ def fetch_weather(start_date, end_date):
 WEATHER_STORE = os.path.join(DATA, "weather_live_{}.csv")
 
 
+CITY_STORE = os.path.join(DATA, "city_weather_live_{}.csv")
+
+
+def cached_city_weather(start_all, target_day):
+    """Temperature and dew point for the PACE load-center cities (cities.py), latest run and previous_day1,
+    cached like cached_weather. Only needed when a v3 model is in production."""
+    from cities import CITIES
+    keys = list(CITIES)
+    stored = {k: (pd.read_csv(CITY_STORE.format(k), parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+                  if os.path.exists(CITY_STORE.format(k)) else pd.DataFrame()) for k in ["latest", "prev1"]}
+    have = stored["latest"].index.max() if not stored["latest"].empty else None
+    start = start_all if have is None else max(start_all, (have - pd.Timedelta(days=12)).normalize())
+    j = get_json("https://previous-runs-api.open-meteo.com/v1/forecast", {
+        "latitude": ",".join(str(CITIES[k]["lat"]) for k in keys), "longitude": ",".join(str(CITIES[k]["lon"]) for k in keys),
+        "models": "ecmwf_ifs025", "timezone": "GMT", "start_date": str(start.date()), "end_date": str((target_day + pd.Timedelta(days=2)).date()),
+        "hourly": "temperature_2m,dew_point_2m,temperature_2m_previous_day1,dew_point_2m_previous_day1"})
+    j = j if isinstance(j, list) else [j]
+    lat, prev = [], []
+    for k, r in zip(keys, j):
+        h = pd.DataFrame(r["hourly"])
+        h.index = pd.to_datetime(h.pop("time"))
+        lat.append(h[["temperature_2m", "dew_point_2m"]].add_prefix(f"{k}_"))
+        prev.append(h[["temperature_2m_previous_day1", "dew_point_2m_previous_day1"]]
+                    .rename(columns=lambda c: f"{k}_" + c.replace("_previous_day1", "")))
+    out = []
+    for k, new in [("latest", pd.concat(lat, axis=1)), ("prev1", pd.concat(prev, axis=1))]:
+        old = stored[k]
+        merged = pd.concat([old[old.index < new.index.min()], new]) if not old.empty else new
+        merged = merged[~merged.index.duplicated(keep="last")].sort_index()
+        merged.index.name = "timestamp_utc"
+        merged.round(2).to_csv(CITY_STORE.format(k))
+        out.append(merged)
+    return out[0], out[1]
+
+
+def add_city_weather(df, fcw, idx, live_h, later, tgt, master_end, target_day, now_utc):
+    """Population-weighted city temperature (maya_common.city_inputs): ERA5 history (kept current by update_city_era5),
+    ECMWF day-ahead forecasts (archive, then the stored previous_day1 values, then the latest run for the buy day),
+    all bias-corrected against ERA5 the same way as in training."""
+    from maya_common import CITY_COLS, city_inputs
+    era = update_city_era5()
+    cfc = pd.read_csv(os.path.join(DATA, "cities_ecmwf_dayahead_2024_2026.csv.gz"), parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+    c_lat, c_prev = cached_city_weather((master_end - pd.Timedelta(days=10)).normalize(), target_day)
+    raw = pd.concat([cfc, c_prev[c_prev.index > cfc.index.max()]])
+    raw = raw[~raw.index.duplicated(keep="first")].reindex(idx)
+    raw[tgt] = c_lat.reindex(idx)[tgt].values          # buy day: the newest run at buy time
+    a, f = city_inputs(era, raw, idx, c_lat)
+    for c in CITY_COLS:
+        df[c] = a[c].values
+        fcw[c] = f[c].values
+    return df, fcw
+
+
+def update_city_era5():
+    """ERA5 for the cities: the training snapshot (data/cities_era5_2019_2026.csv.gz, never changed so --verify stays
+    exact) plus newer days kept in data/cities_era5_live.csv (small request each run)."""
+    from cities import CITIES
+    base = pd.read_csv(os.path.join(DATA, "cities_era5_2019_2026.csv.gz"), parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+    f = os.path.join(DATA, "cities_era5_live.csv")
+    newer = pd.read_csv(f, parse_dates=["timestamp_utc"]).set_index("timestamp_utc").astype(float) if os.path.exists(f) else base.iloc[:0]
+    era = pd.concat([base, newer[newer.index > base.index.max()]]).astype(float)
+    start = (era.index.max() - pd.Timedelta(days=3)).date()
+    end = (pd.Timestamp.now("UTC").tz_localize(None) - pd.Timedelta(days=1)).date()
+    if start >= end:
+        return era
+    keys = list(CITIES)
+    try:
+        js = get_json("https://archive-api.open-meteo.com/v1/archive", {
+            "latitude": ",".join(str(CITIES[k]["lat"]) for k in keys), "longitude": ",".join(str(CITIES[k]["lon"]) for k in keys),
+            "start_date": str(start), "end_date": str(end), "hourly": "temperature_2m,dew_point_2m", "models": "era5", "timezone": "GMT"})
+    except RuntimeError as e:
+        print(f"  ERA5 city update skipped ({e}); bias correction uses the stored history", flush=True)
+        return era
+    parts = []
+    for k, j in zip(keys, js if isinstance(js, list) else [js]):
+        h = pd.DataFrame(j["hourly"])
+        h.index = pd.to_datetime(h.pop("time"))
+        h.columns = [f"{k}_{c}" for c in h.columns]
+        parts.append(h)
+    new = pd.concat(parts, axis=1).dropna()
+    if len(new):
+        era = pd.concat([era, new[era.columns]])
+        era = era[~era.index.duplicated(keep="last")].sort_index()
+        era.index.name = "timestamp_utc"
+        if (era.index > base.index.max()).any():
+            era[era.index > base.index.max()].round(2).to_csv(f)
+    print(f"  ERA5 cities through {era.index.max()}", flush=True)
+    return era
+
+
 def cached_weather(master_end, target_day):
     """Weather since the training data ends, kept in data/weather_live_*.csv so each run only downloads the
     last few days plus the forecast (keeps the Open-Meteo request small and under its rate limits).
@@ -154,11 +244,20 @@ def clean_demand(s):
 
 
 # ------------------------------- features (must match quantile_models.py, MIN_LAG = 48) -------------
-def build_features(df, fc):
+def build_features(df, fc, v3=False):
+    """Model inputs. v3 adds weekday / holiday / school calendar and population-weighted city weather
+    (df and fc must then carry the CITY_COLS columns)."""
+    from maya_common import CAL_EXTRA, CITY_COLS, calendar_extra
     ts = df.index
     year = ts.year.values
     df = df.copy()
     fc = fc.copy()
+    wx_d = WX_D + (CITY_COLS if v3 else [])
+    cal_d = CAL + (CAL_EXTRA if v3 else [])
+    seq_cols = SEQ_D + (["pw_temp"] if v3 else [])
+    tcol = "Temperature (C)"
+    if v3:
+        df = df.join(calendar_extra(ts)[CAL_EXTRA])
     df["hour_sin"] = np.sin(2 * np.pi * ts.hour / 24)
     df["hour_cos"] = np.cos(2 * np.pi * ts.hour / 24)
     df["doy_sin"] = np.sin(2 * np.pi * ts.dayofyear / 365.25)
@@ -191,19 +290,19 @@ def build_features(df, fc):
         e["last_known_change_1d"] = e["last_known"] - y.reindex(last_known - pd.Timedelta(days=1)).values
         e["hours_since_known"] = (ts - last_known) / pd.Timedelta(hours=1)
         e["same_hour_latest"] = np.where(ts - pd.Timedelta(hours=24) <= last_known, y.shift(24).values, y.shift(48).values)
-        e["temp_change_vs_lag"] = temp_target - df["Temperature (C)"].shift(MIN_LAG)
+        e["temp_change_vs_lag"] = temp_target - df[tcol].shift(MIN_LAG)
         return e
 
     y = df[D].astype(float)
-    G = pd.concat([df[WX_D + CAL], lags(y)], axis=1)
-    for c in WX_D:
+    G = pd.concat([df[wx_d + cal_d], lags(y)], axis=1)
+    for c in wx_d:
         G[c] = fc[c]
-    now = df[WX_D + CAL].copy()
-    for c in WX_D:
+    now = df[wx_d + cal_d].copy()
+    for c in wx_d:
         now[c] = fc[c]
-    e_fc = buy_time(y, fc["Temperature (C)"])
+    e_fc = buy_time(y, fc[tcol])
     G, now = pd.concat([G, e_fc], axis=1), pd.concat([now, e_fc], axis=1)
-    seq_df = pd.concat([y.rename("y"), df[SEQ_D], df[["hour_sin", "hour_cos", "doy_sin", "doy_cos"]]], axis=1)
+    seq_df = pd.concat([y.rename("y"), df[seq_cols], df[["hour_sin", "hour_cos", "doy_sin", "doy_cos"]]], axis=1)
     seq_ok = seq_df.notna().all(axis=1).astype(int).rolling(WIN).sum().shift(MIN_LAG).fillna(0).values == WIN
     yr = df[R].astype(float)
     H = pd.concat([df[WX_R + CAL], lags(yr)], axis=1)
@@ -224,7 +323,9 @@ class QNet(nn.Module):
         return torch.cat([z[:, :1], z[:, :1] + torch.cumsum(nn.functional.softplus(z[:, 1:]), dim=1)], dim=1)
 
 
-ORIGINAL = os.path.join(MOD, "v2.0_original")   # the models the backtest was built with (kept when a retrain promotes)
+# the models the current backtest (out/lag48) was built with, kept when a retrain promotes; v3.0 once v3 is in production
+ORIGINAL = next((os.path.join(MOD, v) for v in ["v3.0_original", "v2.0_original"] if os.path.isdir(os.path.join(MOD, v))),
+                os.path.join(MOD, "v2.0_original"))
 
 
 def load_models(mod=None):
@@ -299,9 +400,9 @@ def next_buy_day(now_utc):
 
 DRIVER_GROUPS = {
     "Recent demand": ["lag48", "lag72", "lag168", "roll7", "last_known", "last_known_change_1d", "hours_since_known", "same_hour_latest"],
-    "Temperature": ["Temperature (C)", "temp_change_vs_lag"],
+    "Temperature": ["Temperature (C)", "temp_change_vs_lag", "pw_temp"],
     "Sun and wind": ["GHI (W/m2)", "Wind Speed 10m (m/s)", "Wind Speed 100m (m/s)", "Wind Speed 80m (m/s)"],
-    "Calendar": ["hour_sin", "hour_cos", "doy_sin", "doy_cos", "month", "is_weekend"],
+    "Calendar": ["hour_sin", "hour_cos", "doy_sin", "doy_cos", "month", "is_weekend", "dow", "holiday", "bridge", "school_out"],
 }
 
 
@@ -325,11 +426,20 @@ def explain(G, index):
 
 # ------------------------------- verify mode -------------------------------------------------------
 def verify():
+    """Rebuilds the 2026 backtest with the models it was made with and checks the numbers match exactly."""
     m, fc = load_master()
     fc = fc.reindex(m.index)
-    F = build_features(m, fc)
+    models = load_models(ORIGINAL if os.path.isdir(ORIGINAL) else MOD)
+    v3 = "dow" in models[0][0.5].feature_names_in_
+    if v3:      # same assembly as quantile_models.py with MAYA_FEATURES=v3
+        from maya_common import CITY_COLS, city_inputs
+        rd = lambda n: pd.read_csv(os.path.join(DATA, n), parse_dates=["timestamp_utc"]).set_index("timestamp_utc")
+        a, f = city_inputs(rd("cities_era5_2019_2026.csv.gz"), rd("cities_ecmwf_dayahead_2024_2026.csv.gz"), m.index)
+        for c in CITY_COLS:
+            m[c], fc[c] = a[c], f[c]
+    F = build_features(m, fc, v3=v3)
     mask = (m.index.year == 2026) & (m.index <= m[D].last_valid_index())
-    p = predict(F, np.asarray(mask), load_models(ORIGINAL if os.path.isdir(ORIGINAL) else MOD))
+    p = predict(F, np.asarray(mask), models)
     bt = pd.read_parquet(BACKTEST)
     bt = bt[bt.period == "B forward test 2026"]
     cols = [c for c in p.columns if c in bt.columns]
@@ -383,30 +493,50 @@ def run(now_utc=None):
     for c in w_latest.columns:
         fcw.loc[tgt, c] = w_latest[c].reindex(idx[tgt]).values
 
+    # --- v3 models also need population-weighted city weather
+    models = load_models()
+    v3 = "dow" in models[0][0.5].feature_names_in_
+    version = MODEL_VERSION
+    if v3:
+        try:
+            df, fcw = add_city_weather(df, fcw, idx, live_h, later, tgt, master_end, target_day, now_utc)
+            if fcw.loc[tgt, "pw_temp"].isna().any():
+                raise RuntimeError("no city forecast for the buy day")
+        except RuntimeError as e:      # never miss a buy day over one weather feed: fall back to the v2 models
+            fb = os.path.join(MOD, "v2_fallback")
+            print(f"  city weather unavailable ({e}); using the v2 fallback models", flush=True)
+            models, v3 = load_models(fb), False
+            version = open(os.path.join(fb, "model_version.txt")).read().strip() + " (fallback: city weather unavailable)"
+            df = df.drop(columns=["pw_temp"], errors="ignore")
+            fcw = fcw.drop(columns=["pw_temp"], errors="ignore")
+
     # --- save the live-period history (actuals + weather) for the monthly retrain
     hcols = [D, "Day-Ahead Demand Forecast (MWh)", "Temperature (C)", "GHI (W/m2)", "DNI (W/m2)", "DHI (W/m2)", "Cloud Cover (%)",
              "Wind Speed 10m (m/s)", "Wind Speed 100m (m/s)", "Clear-sky GHI (W/m2)", R]
-    hist_live = df.loc[live_h & (idx <= now_utc), hcols].join(fcw.loc[live_h & (idx <= now_utc), list(OM_VARS.values())].add_prefix("fc_"))
+    from maya_common import CITY_COLS
+    hcols = hcols + [c for c in CITY_COLS if c in df]
+    fcols = list(OM_VARS.values()) + [c for c in CITY_COLS if c in fcw]
+    hist_live = df.loc[live_h & (idx <= now_utc), hcols].join(fcw.loc[live_h & (idx <= now_utc), fcols].add_prefix("fc_"))
     hist_live.index.name = "timestamp_utc"
     hist_live.to_parquet(os.path.join(LIVE, "history_live.parquet"))
 
     # --- forecast the live days. Past days come from the archive exactly as issued (never recomputed, so a retrained
     #     model can never rewrite the track record). A day is (re)forecast only if it is not archived yet, or its buy
     #     deadline has not passed (+4 h grace for the scheduled run).
-    F = build_features(df, fcw)
+    F = build_features(df, fcw, v3=v3)
     live_days = pd.date_range(live_start_day, target_day, freq="D")
     archive = pd.read_parquet(ARCHIVE) if os.path.exists(ARCHIVE) else pd.DataFrame()
     archived_days = set(pd.to_datetime(archive.buy_day).dt.normalize()) if len(archive) else set()
     open_days = [d for d in live_days
                  if d not in archived_days or now_utc <= d - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC + 4)]
     want = np.isin(idx, np.concatenate([buy_day_hours(d) for d in open_days])) if open_days else np.zeros(len(idx), bool)
-    new = predict(F, want, load_models())
+    new = predict(F, want, models)
     new["buy_day"] = (new.index - pd.Timedelta(hours=7)).normalize()
     last_known_target = buy_day_hours(target_day)[0] - pd.Timedelta(hours=7 + 24 - ISSUE_HOUR_UTC + 2)
     provisional = bool(d_eia.index.max() < last_known_target) if len(d_eia) else True
     deadline = new.buy_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC)
     new["issued"] = np.where(now_utc <= deadline + pd.Timedelta(hours=4), str(now_utc), "backfill (day-ahead weather, same rules)")
-    new["model_version"] = MODEL_VERSION
+    new["model_version"] = version
     keep = archive[~pd.to_datetime(archive.buy_day).dt.normalize().isin(open_days)] if len(archive) else archive
     raw = pd.concat([keep, new]).sort_index()
     raw = raw[~raw.index.duplicated(keep="last")]

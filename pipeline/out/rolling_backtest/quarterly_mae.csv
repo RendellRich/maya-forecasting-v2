@@ -1,0 +1,20 @@
+quarter,weather,hours,pace_MAE,maya_v2_MAE,maya_v3_MAE
+2022Q1,actual weather (optimistic),2159,299.4,192.2,179.4
+2022Q2,actual weather (optimistic),2184,365.2,206.7,184.5
+2022Q3,actual weather (optimistic),2208,467.6,289.7,223.5
+2022Q4,actual weather (optimistic),2208,257.5,183.4,185.1
+2023Q1,actual weather (optimistic),2159,215.3,186.8,180.1
+2023Q2,actual weather (optimistic),2184,179.7,171.3,143.6
+2023Q3,actual weather (optimistic),2204,359.2,264.6,196.7
+2023Q4,actual weather (optimistic),2208,338.6,189.2,179.9
+2024Q1,actual weather (optimistic),2184,198.5,177.6,167.4
+2024Q2,forecast weather,2184,169.5,193.0,170.4
+2024Q3,forecast weather,2208,436.3,253.1,195.5
+2024Q4,forecast weather,2208,194.9,189.3,173.6
+2025Q1,forecast weather,2160,211.7,172.5,160.7
+2025Q2,forecast weather,2184,185.3,221.7,192.2
+2025Q3,forecast weather,2208,387.8,267.2,233.4
+2025Q4,forecast weather,2208,218.9,199.5,192.3
+2026Q1,forecast weather,2055,213.1,177.3,164.9
+2026Q2,forecast weather,2184,279.5,229.2,201.0
+2026Q3,forecast weather,1512,612.4,352.6,313.3

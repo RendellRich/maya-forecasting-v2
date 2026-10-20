@@ -1,0 +1,13 @@
+period,policy,hours,short_hours_pct,avg_short_MWh,avg_surplus_MWh,worst_short_MWh,cost_K19,cost_K9
+2025,Flat Maya P95,8760,5.1,5.8,411.7,477.0,522.1,464.0
+2025,"Risk-adjusted Maya (P95 Green, P98 Yellow/Red)",8760,3.7,3.8,443.9,448.0,515.9,478.0
+2025,PACE + cushion P95,8760,5.3,6.8,401.7,857.0,531.3,463.1
+2025,PACE as published,8760,25.3,38.0,213.3,991.0,935.1,555.2
+2026,Flat Maya P95,5587,4.7,6.6,518.4,672.0,644.4,578.1
+2026,"Risk-adjusted Maya (P95 Green, P98 Yellow/Red)",5587,3.8,5.1,569.4,586.0,665.6,615.0
+2026,PACE + cushion P95,5587,4.3,6.0,597.8,593.0,711.0,651.4
+2026,PACE as published,5587,26.8,49.9,297.9,882.0,1246.4,747.2
+2025-26,Flat Maya P95,14347,5.0,6.1,453.3,672.0,569.7,508.4
+2025-26,"Risk-adjusted Maya (P95 Green, P98 Yellow/Red)",14347,3.7,4.3,492.8,586.0,574.2,531.3
+2025-26,PACE + cushion P95,14347,4.9,6.5,478.0,857.0,601.3,536.4
+2025-26,PACE as published,14347,25.9,42.6,246.3,991.0,1056.3,630.0

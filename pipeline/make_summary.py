@@ -129,7 +129,7 @@ def build():
                         f"at a placeholder size of {MW_PLACEHOLDER:.0f} MW until Maui Hiva confirms its load. 90% ranges from a bootstrap over whole days.", st_n),
               Paragraph("How it works", st_h),
               Paragraph("<b>1. A calibrated range.</b> Two models (gradient boosting and an LSTM) forecast levels from P50 (best guess) to P98, "
-                        "using ECMWF weather forecasts and only data available at the deadline. Each level is re-checked daily, so P95 really "
+                        "using ECMWF weather forecasts (Milford plus eight load-center cities), holidays and school breaks, and only data available at the deadline. Each level is re-checked daily, so P95 really "
                         "is short about 5% of the time.", st_b),
               Paragraph("<b>2. Risk and the bid ladder.</b> A daily Green / Yellow / Red tier sets the always-bought amount (P95, or P98 on risky "
                         "days). An hourly spike-risk model sets a price limit for an extra block up to P98, bought only when day-ahead is cheaper "

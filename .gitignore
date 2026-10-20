@@ -5,3 +5,7 @@ __pycache__/
 .venv/
 pipeline/out/strategies_hourly.parquet
 pipeline/models/lag48/spike_classifier.joblib
+pipeline/out/*/maya_v2_hourly.csv.gz
+pipeline/out/lag48_v3/
+pipeline/models/lag48_v3/
+pipeline/out/lag48_v2_backtest/*.parquet

@@ -1,0 +1,1 @@
+v3.0 (calendar + population-weighted temperature, trained through 2025)

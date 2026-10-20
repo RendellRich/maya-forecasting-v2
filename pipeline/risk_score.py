@@ -36,7 +36,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import roc_auc_score, brier_score_loss
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LAGDIR = f"lag{os.environ.get('MAYA_MIN_LAG', '48')}"
+LAGDIR = f"lag{os.environ.get('MAYA_MIN_LAG', '48')}" + ("" if os.environ.get("MAYA_FEATURES", "v2") == "v2" else "_" + os.environ["MAYA_FEATURES"])
 OUT, MOD = os.path.join(HERE, "out", LAGDIR), os.path.join(HERE, "models", LAGDIR)
 h = pd.read_parquet(os.path.join(OUT, "maya_v2_hourly.parquet"))
 h = h[h.index >= "2024-03-06"]

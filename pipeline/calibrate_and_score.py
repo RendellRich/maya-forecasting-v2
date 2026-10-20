@@ -21,7 +21,8 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "out", f"lag{os.environ.get('MAYA_MIN_LAG', '48')}")
+_SFX = "" if os.environ.get("MAYA_FEATURES", "v2") == "v2" else "_" + os.environ["MAYA_FEATURES"]
+OUT = os.path.join(HERE, "out", f"lag{os.environ.get('MAYA_MIN_LAG', '48')}{_SFX}")
 WINDOW, LAG, MIN_DAYS = 60, 2, 14
 QD = [0.50, 0.75, 0.90, 0.95, 0.98]
 QR = [0.02, 0.05, 0.10, 0.25, 0.50]

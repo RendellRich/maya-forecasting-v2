@@ -1,0 +1,10 @@
+period,comparison,days,mean_diff,dm_stat,p_value
+actual weather (optimistic),maya_v2 vs PACE,822,-91.4456,-7.1807,0.0
+actual weather (optimistic),maya_v3 vs PACE,822,-116.1545,-8.7373,0.0
+actual weather (optimistic),maya_v3 vs maya_v2,822,-24.7089,-6.5759,0.0
+forecast weather,maya_v2 vs PACE,882,-59.3461,-5.4663,0.0
+forecast weather,maya_v3 vs PACE,882,-84.7069,-7.3154,0.0
+forecast weather,maya_v3 vs maya_v2,882,-25.3609,-7.8274,0.0
+all,maya_v2 vs PACE,1703,-74.8971,-8.9145,0.0
+all,maya_v3 vs PACE,1703,-99.9241,-11.2909,0.0
+all,maya_v3 vs maya_v2,1703,-25.0269,-10.1338,0.0
