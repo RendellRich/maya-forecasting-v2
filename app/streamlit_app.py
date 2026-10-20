@@ -683,7 +683,9 @@ with tab_how:
                           legend=dict(orientation="h", y=1.12))
         st.plotly_chart(fig, use_container_width=True)
         T = pd.read_csv(DATA / "rolling_dm_tests.csv")
-        T = T[T.period == "forecast weather"][["comparison", "days", "mean_diff", "dm_stat", "p_value"]]
+        T = T[T.period == "forecast weather"][["comparison", "days", "mean_diff", "dm_stat", "p_value"]].copy()
+        T["comparison"] = T.comparison.str.replace("maya_v3", "Maya v3").str.replace("maya_v2", "Maya v2")
+        T["p_value"] = T.p_value.map(lambda p: "< 0.001" if p < 0.001 else f"{p:.3f}")
         st.dataframe(T.rename(columns={"comparison": "Comparison", "days": "Days", "mean_diff": "Error difference (MWh/h)",
                                        "dm_stat": "Diebold-Mariano statistic", "p_value": "p-value"}).round(3),
                      hide_index=True, use_container_width=True)
