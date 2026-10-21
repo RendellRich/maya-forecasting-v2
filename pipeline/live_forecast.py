@@ -54,6 +54,15 @@ def _model_version():
 
 
 MODEL_VERSION = _model_version()
+
+
+def known_lead(mod=None):
+    """Hours before the deadline of the newest demand reading the models in `mod` were trained to use (2 if not recorded)."""
+    f = os.path.join(mod or MOD, "known_lead_h.txt")
+    return int(open(f).read().strip()) if os.path.exists(f) else 2
+
+
+KNOWN_LEAD = known_lead()
 MIN_LAG, ISSUE_HOUR_UTC, WIN = 48, 16, 168
 LAT, LON = 38.4167, -113.0167
 SOLAR_FACTOR_2025 = 0.815          # mean 2025 EIA-923 / physics factor (same rule v3 uses for months not yet published)
@@ -247,7 +256,7 @@ def clean_demand(s):
 
 
 # ------------------------------- features (must match quantile_models.py, MIN_LAG = 48) -------------
-def build_features(df, fc, v3=False):
+def build_features(df, fc, v3=False, lead=None):
     """Model inputs. v3 adds weekday / holiday / school calendar and population-weighted city weather
     (df and fc must then carry the CITY_COLS columns)."""
     from maya_common import CAL_EXTRA, CITY_COLS, calendar_extra
@@ -283,7 +292,7 @@ def build_features(df, fc, v3=False):
 
     def buy_time(y, temp_target):
         local_day = (ts - pd.Timedelta(hours=7)).normalize()
-        last_known = local_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC - 2)
+        last_known = local_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC - (KNOWN_LEAD if lead is None else lead))
         # provisional runs (before the buy-time reading exists): fall back to the newest reading available.
         # Never binds on history, so backtest features are unchanged (checked by --verify).
         newest = y.last_valid_index()
@@ -327,7 +336,7 @@ class QNet(nn.Module):
 
 
 # the models the current backtest (out/lag48) was built with, kept when a retrain promotes; v3.0 once v3 is in production
-ORIGINAL = next((os.path.join(MOD, v) for v in ["v3.0_original", "v2.0_original"] if os.path.isdir(os.path.join(MOD, v))),
+ORIGINAL = next((os.path.join(MOD, v) for v in ["v3.1_original", "v3.0_original", "v2.0_original"] if os.path.isdir(os.path.join(MOD, v))),
                 os.path.join(MOD, "v2.0_original"))
 
 
@@ -440,7 +449,7 @@ def verify():
         a, f = city_inputs(rd("cities_era5_2019_2026.csv.gz"), rd("cities_ecmwf_dayahead_2024_2026.csv.gz"), m.index)
         for c in CITY_COLS:
             m[c], fc[c] = a[c], f[c]
-    F = build_features(m, fc, v3=v3)
+    F = build_features(m, fc, v3=v3, lead=known_lead(ORIGINAL if os.path.isdir(ORIGINAL) else MOD))
     mask = (m.index.year == 2026) & (m.index <= m[D].last_valid_index())
     p = predict(F, np.asarray(mask), models)
     bt = pd.read_parquet(BACKTEST)
@@ -500,7 +509,7 @@ def run(now_utc=None):
     # --- v3 models also need population-weighted city weather
     models = load_models()
     v3 = "dow" in models[0][0.5].feature_names_in_
-    version = MODEL_VERSION
+    version, lead = MODEL_VERSION, KNOWN_LEAD
     if v3:
         try:
             df, fcw = add_city_weather(df, fcw, idx, live_h, later, tgt, master_end, target_day, now_utc)
@@ -509,7 +518,7 @@ def run(now_utc=None):
         except RuntimeError as e:      # never miss a buy day over one weather feed: fall back to the v2 models
             fb = os.path.join(MOD, "v2_fallback")
             print(f"  city weather unavailable ({e}); using the v2 fallback models", flush=True)
-            models, v3 = load_models(fb), False
+            models, v3, lead = load_models(fb), False, known_lead(fb)
             version = open(os.path.join(fb, "model_version.txt")).read().strip() + " (fallback: city weather unavailable)"
             df = df.drop(columns=["pw_temp"], errors="ignore")
             fcw = fcw.drop(columns=["pw_temp"], errors="ignore")
@@ -527,7 +536,7 @@ def run(now_utc=None):
     # --- forecast the live days. Past days come from the archive exactly as issued (never recomputed, so a retrained
     #     model can never rewrite the track record). A day is (re)forecast only before its buy deadline (the last run
     #     before 16:00 UTC is the forecast of record), or if it has no forecast at all yet (then marked late or backfill).
-    F = build_features(df, fcw, v3=v3)
+    F = build_features(df, fcw, v3=v3, lead=lead)
     live_days = pd.date_range(live_start_day, target_day, freq="D")
     archive = pd.read_parquet(ARCHIVE) if os.path.exists(ARCHIVE) else pd.DataFrame()
     archived_days = set(pd.to_datetime(archive.buy_day).dt.normalize()) if len(archive) else set()
@@ -536,7 +545,7 @@ def run(now_utc=None):
     want = np.isin(idx, np.concatenate([buy_day_hours(d) for d in open_days])) if open_days else np.zeros(len(idx), bool)
     new = predict(F, want, models)
     new["buy_day"] = (new.index - pd.Timedelta(hours=7)).normalize()
-    last_known_target = buy_day_hours(target_day)[0] - pd.Timedelta(hours=7 + 24 - ISSUE_HOUR_UTC + 2)
+    last_known_target = buy_day_hours(target_day)[0] - pd.Timedelta(hours=7 + 24 - ISSUE_HOUR_UTC + KNOWN_LEAD)
     provisional = bool(d_eia.index.max() < last_known_target) if len(d_eia) else True
     deadline = new.buy_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC)
     stamp = str(now_exact.floor("min"))

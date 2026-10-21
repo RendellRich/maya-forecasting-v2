@@ -43,7 +43,10 @@ DATA = os.path.join(HERE, "data")
 # MAYA_FEATURES: v2 = production inputs as of Oct 20; v3 = adds weekday / holiday / school calendar, population-weighted
 # city weather (cities.py) and tuned settings for the upper quantile GBMs (time-series CV on 2022-2023).
 FEATURES = os.environ.get("MAYA_FEATURES", "v2")
-SUFFIX = "" if FEATURES == "v2" else f"_{FEATURES}"
+# MAYA_KNOWN_LEAD: hours before the 16:00 UTC deadline of the newest demand reading the model may use. 2 = the original
+# assumption; 4 = what EIA's public data reliably has by then (it posts with a lag of about 3 hours after cleaning).
+KNOWN_LEAD = int(os.environ.get("MAYA_KNOWN_LEAD", "2"))
+SUFFIX = ("" if FEATURES == "v2" else f"_{FEATURES}") + ("" if KNOWN_LEAD == 2 else f"_k{KNOWN_LEAD}")
 OUT, MOD = os.path.join(HERE, "out", f"lag{MIN_LAG}{SUFFIX}"), os.path.join(HERE, "models", f"lag{MIN_LAG}{SUFFIX}")
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(MOD, exist_ok=True)
@@ -126,9 +129,9 @@ y = df[D].astype(float)
 def buy_time_features(y, temp_target):
     """Extra inputs that are known when the day-ahead buy is placed (only used when MIN_LAG = 48).
     Buy placed at ISSUE_HOUR_UTC on the Mountain-local day before the target (local day = UTC-7);
-    newest demand reading then = 2 h before the buy (EIA posts PACE demand within about 1-2 h)."""
+    newest demand reading then = KNOWN_LEAD hours before the buy."""
     local_day = (ts - pd.Timedelta(hours=7)).normalize()
-    last_known = local_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC - 2)
+    last_known = local_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC - KNOWN_LEAD)
     e = pd.DataFrame(index=ts)
     e["last_known"] = y.reindex(last_known).values                                    # newest reading at buy time
     e["last_known_change_1d"] = e["last_known"] - y.reindex(last_known - pd.Timedelta(days=1)).values
@@ -237,6 +240,7 @@ print("Demand, period B / production (train 2019, 2021-2025)", flush=True)
 gB, nB, sB = fit_demand([2019, 2021, 2022, 2023, 2024, 2025], "B")
 dB = predict_demand(gB, nB, sB, B)
 joblib.dump(gB, os.path.join(MOD, "demand_gbm_quantiles.joblib"))
+open(os.path.join(MOD, "known_lead_h.txt"), "w").write(str(KNOWN_LEAD))
 torch.save({"state_dict": nB.state_dict(), "quantiles": QD, "n_seq": len(seq_df.columns), "n_now": len(now_act.columns),
             "scaler": {k: v.to_dict() for k, v in sB.items()}, "seq_cols": list(seq_df.columns),
             "now_cols": list(now_act.columns), "window": WIN, "gap": GAP}, os.path.join(MOD, "demand_lstm_quantiles.pt"))

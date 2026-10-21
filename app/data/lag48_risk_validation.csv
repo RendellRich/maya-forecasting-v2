@@ -1,28 +1,28 @@
 period,version,tier,days,share_of_days_pct,days_with_a_short_hour_pct,avg_short_hours,avg_worst_short_MWh,avg_worst_P50_miss_MWh
-2025,v1 width only,Green,212,58.1,35.4,1.77,53.0,381.0
-2025,v1 width only,Yellow,111,30.4,21.6,0.65,29.0,415.0
-2025,v1 width only,Red,42,11.5,4.8,0.12,2.0,445.0
-2025,v2 classifier,Green,236,64.7,22.0,1.03,32.0,389.0
-2025,v2 classifier,Yellow,118,32.3,38.1,1.55,46.0,408.0
-2025,v2 classifier,Red,11,3.0,36.4,2.45,126.0,502.0
-2025,AUC,v1 width,365,0.343,,,,
-2025,AUC,v2 classifier,365,0.614,,,,
-2025,Brier,v2 classifier,365,0.196,,,,
-2026,v1 width only,Green,135,56.7,33.3,1.19,50.0,442.0
-2026,v1 width only,Yellow,67,28.2,34.3,1.21,60.0,609.0
-2026,v1 width only,Red,36,15.1,30.6,0.75,53.0,726.0
-2026,v2 classifier,Green,153,64.3,25.5,0.67,32.0,484.0
-2026,v2 classifier,Yellow,71,29.8,43.7,1.69,83.0,612.0
-2026,v2 classifier,Red,14,5.9,64.3,3.29,136.0,653.0
-2026,AUC,v1 width,238,0.459,,,,
-2026,AUC,v2 classifier,238,0.658,,,,
-2026,Brier,v2 classifier,238,0.213,,,,
-2025-26,v1 width only,Green,347,57.5,34.6,1.54,52.0,405.0
-2025-26,v1 width only,Yellow,178,29.5,26.4,0.86,41.0,488.0
-2025-26,v1 width only,Red,78,12.9,16.7,0.41,25.0,575.0
-2025-26,v2 classifier,Green,389,64.5,23.4,0.89,32.0,426.0
-2025-26,v2 classifier,Yellow,189,31.3,40.2,1.6,60.0,484.0
-2025-26,v2 classifier,Red,25,4.1,52.0,2.92,132.0,587.0
-2025-26,AUC,v1 width,603,0.396,,,,
-2025-26,AUC,v2 classifier,603,0.633,,,,
-2025-26,Brier,v2 classifier,603,0.203,,,,
+2025,v1 width only,Green,209,57.3,34.9,1.84,58.0,383.0
+2025,v1 width only,Yellow,117,32.1,17.9,0.46,20.0,409.0
+2025,v1 width only,Red,39,10.7,7.7,0.18,7.0,466.0
+2025,v2 classifier,Green,230,63.0,21.7,1.07,36.0,390.0
+2025,v2 classifier,Yellow,114,31.2,36.0,1.63,49.0,411.0
+2025,v2 classifier,Red,21,5.8,28.6,0.62,47.0,450.0
+2025,AUC,v1 width,365,0.342,,,,
+2025,AUC,v2 classifier,365,0.639,,,,
+2025,Brier,v2 classifier,365,0.193,,,,
+2026,v1 width only,Green,118,49.6,35.6,1.31,52.0,444.0
+2026,v1 width only,Yellow,73,30.7,37.0,1.08,51.0,562.0
+2026,v1 width only,Red,47,19.7,34.0,0.72,44.0,694.0
+2026,v2 classifier,Green,171,71.8,29.2,0.72,32.0,506.0
+2026,v2 classifier,Yellow,57,23.9,52.6,2.09,93.0,585.0
+2026,v2 classifier,Red,10,4.2,50.0,2.6,103.0,620.0
+2026,AUC,v1 width,238,0.495,,,,
+2026,AUC,v2 classifier,238,0.663,,,,
+2026,Brier,v2 classifier,238,0.23,,,,
+2025-26,v1 width only,Green,327,54.2,35.2,1.65,56.0,405.0
+2025-26,v1 width only,Yellow,190,31.5,25.3,0.7,32.0,468.0
+2025-26,v1 width only,Red,86,14.3,22.1,0.48,27.0,591.0
+2025-26,v2 classifier,Green,401,66.5,24.9,0.92,34.0,440.0
+2025-26,v2 classifier,Yellow,171,28.4,41.5,1.78,63.0,469.0
+2025-26,v2 classifier,Red,31,5.1,35.5,1.26,65.0,505.0
+2025-26,AUC,v1 width,603,0.418,,,,
+2025-26,AUC,v2 classifier,603,0.645,,,,
+2025-26,Brier,v2 classifier,603,0.207,,,,

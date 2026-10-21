@@ -143,7 +143,7 @@ def save(models, version):
     stamp = time.strftime("%Y%m%d")
     bak = os.path.join(L.MOD, f"previous_{stamp}")
     os.makedirs(bak, exist_ok=True)
-    for f in ["demand_gbm_quantiles.joblib", "demand_lstm_quantiles.pt", "renewable_gbm_quantiles.joblib", "model_version.txt"]:
+    for f in ["demand_gbm_quantiles.joblib", "demand_lstm_quantiles.pt", "renewable_gbm_quantiles.joblib", "model_version.txt", "known_lead_h.txt"]:
         if os.path.exists(os.path.join(L.MOD, f)):
             shutil.copy(os.path.join(L.MOD, f), os.path.join(bak, f))
     joblib.dump(gbms, os.path.join(L.MOD, "demand_gbm_quantiles.joblib"))
@@ -177,7 +177,7 @@ def main(dry_run=False):
                decision="promoted" if promote else ("dry run" if dry_run else "kept current model"))
     if promote:
         final_end = last.normalize() - pd.Timedelta(days=1)
-        version = f"{'v3' if v3 else 'v2'}.{pd.Timestamp.now('UTC'):%Y%m%d} (retrained through {final_end.date()})"
+        version = f"{('v3.1' if L.KNOWN_LEAD == 4 else 'v3') if v3 else 'v2'}.{pd.Timestamp.now('UTC'):%Y%m%d} (retrained through {final_end.date()})"
         save(fit(df, fcw, final_end, v3), version)
         row["new_model"] = version
     log = pd.concat([pd.read_csv(LOG), pd.DataFrame([row])]) if os.path.exists(LOG) else pd.DataFrame([row])

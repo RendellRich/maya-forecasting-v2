@@ -9,3 +9,5 @@ pipeline/out/*/maya_v2_hourly.csv.gz
 pipeline/out/lag48_v3/
 pipeline/models/lag48_v3/
 pipeline/out/lag48_v2_backtest/*.parquet
+pipeline/out/lag48_v3_k4/
+pipeline/models/lag48_v3_k4/

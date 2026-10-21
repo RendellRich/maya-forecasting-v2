@@ -709,9 +709,11 @@ short that often (adaptive conformal calibration). This is why the coverage char
 centers (Salt Lake City, Ogden, Provo, Logan, Cedar City, Rexburg, Casper, Rock Springs). The ECMWF city forecast runs about
 0.9 C colder than the ERA5 reanalysis the model trains on, so it is shifted by its own trailing 60-day bias, which is known at the
 deadline. Calendar inputs cover weekday, federal and Utah holidays (Pioneer Day, Christmas Eve, day after Thanksgiving), the days
-next to them, and Utah school breaks. Together these cut best-guess error by about 12% (model v3.0, Oct 20, 2026).
+next to them, and Utah school breaks. Together these cut best-guess error by about 12% (model v3, Oct 20, 2026).
 
-**3b. Honest timing.** The buy deadline is taken as 10 am Mountain the day before. Every hour of the buy day then has demand from two
+**3b. Honest timing.** The buy deadline is taken as 10 am Mountain the day before. EIA posts demand a few hours late, so since
+Oct 21 (model v3.1) the newest reading Maya uses is the one from 4 hours before the deadline, which public data reliably has by
+then; this costs about 1.5% in accuracy. Every hour of the buy day then has demand from two
 days earlier available, plus the newest reading on the morning of the buy and ECMWF day-ahead weather. The original Maya used
 yesterday's same-hour demand, which is not all known at a morning buy; with that, Maya would be roughly 10 to 20% cheaper again
 (grey line on the Maya vs PACE tab). If Maui Hiva's real deadline is later in the day, the advantage grows.
@@ -721,7 +723,7 @@ yesterday's same-hour demand, which is not all known at a morning buy; with that
 **5. Bid ladder (recommended way to buy).** Block 1, the Maya-rule amount, is bid at any price. Block 2, the extra cushion up to
 P98 on Green days, is bid at a limit equal to the expected real-time price for that hour: recent normal real-time price plus the
 hour's spike risk times a typical spike premium. It is bought only when day-ahead clears at or below that limit. At real May to
-Oct 2026 prices this was the best option tested (-\\$0.19/MWh vs perfect foresight, short on 2.7% of hours).
+Oct 2026 prices this was the best option tested (-\\$0.16/MWh vs perfect foresight, short on 3.0% of hours).
 
 **6. Load shifting.** Expected day-ahead price per hour = the same hour's average day-ahead price over the last 7 days (known
 at the deadline). The Shift load tab moves flexible MW out of tomorrow's most expensive expected hours into the cheapest ones.
