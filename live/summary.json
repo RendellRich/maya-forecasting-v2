@@ -5,18 +5,18 @@
   "newest_demand_hour_utc": "2026-10-21 16:00:00",
   "buy_deadline_utc": "2026-10-22 16:00:00",
   "tier": "Green",
-  "risk": 0.308,
+  "risk": 0.289,
   "buy_level": "P95",
-  "buy_net_MWh_total": 58060.0,
-  "buy_demand_MWh_total": 58938.0,
-  "p50_demand_MWh_total": 53310.0,
+  "buy_net_MWh_total": 58113.0,
+  "buy_demand_MWh_total": 58991.0,
+  "p50_demand_MWh_total": 53482.0,
   "hours": 10,
   "live_days_scored": 49,
   "weather": "ECMWF IFS 0.25 (Open-Meteo), latest run for the buy day",
   "note": "Provisional: the 8 am Mountain demand reading was not public yet, so the newest reading was used.",
   "ladder": {
-    "block1_MWh": 58060.0,
-    "block2_MWh": 1149.0,
-    "high_risk_hours": 4
+    "block1_MWh": 58113.0,
+    "block2_MWh": 1155.0,
+    "high_risk_hours": 8
   }
 }
