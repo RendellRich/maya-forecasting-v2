@@ -9,7 +9,7 @@ a small surplus, so Maya v2 forecasts a calibrated range and recommends a buy le
 ## Run it
 - Dashboard: double-click `Start Maya v2.bat` (or `streamlit run app/streamlit_app.py`)
 - Today's forecast: double-click `Run Daily Forecast.bat` (or `python pipeline/live_forecast.py`).
-  Official run after 16:15 UTC (10:15 am MDT). Earlier runs are marked provisional.
+  Scheduled 14:20, 15:00 and 15:40 UTC; the last run before the 16:00 UTC deadline is locked as the forecast of record.
 - Install once: `pip install -r pipeline/requirements.txt -r app/requirements.txt`
 
 ## What is where
@@ -34,7 +34,7 @@ a small surplus, so Maya v2 forecasts a calibrated range and recommends a buy le
 | `pipeline/models/lag48` | Production models used by the live run |
 | `live/` | Latest forecast, live track record, daily drivers |
 | `app/` | Streamlit dashboard |
-| `.github/workflows/daily_forecast.yml` | Daily GitHub Actions run at 16:15 UTC (10:15 am MDT). Commits `live/` and the price file. Optional secret `EIA_API_KEY` |
+| `.github/workflows/daily_forecast.yml` | Daily GitHub Actions runs at 14:20, 15:00 and 15:40 UTC, before the 16:00 UTC deadline. Commits `live/` and the price file. Optional secret `EIA_API_KEY` |
 
 Real-price settlement (track record and Maya vs PACE tab): buy B day-ahead at the day-ahead price, cover or sell the gap
 at the real-time price. Extra cost vs perfect foresight = (real-time - day-ahead) x (actual - buy).

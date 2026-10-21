@@ -1,9 +1,13 @@
-# Daily Maya v2 run: 16:15 UTC = 10:15 am MDT / 9:15 am MST, just after the buy-time demand reading is published.
+# Daily Maya v2 runs before the 16:00 UTC buy deadline (10 am MDT / 9 am MST): 14:20, 15:00 and 15:40 UTC.
+# GitHub can start scheduled jobs late, so three runs make it likely one lands in time. The last run before the
+# deadline is the forecast of record; live_forecast.py locks it, so a late run cannot replace it.
 # Uses the repository secret EIA_API_KEY if set (free key: https://www.eia.gov/opendata/); otherwise EIA's rate-limited DEMO_KEY.
 name: Maya v2 daily forecast
 on:
   schedule:
-    - cron: "15 16 * * *"
+    - cron: "20 14 * * *"
+    - cron: "0 15 * * *"
+    - cron: "40 15 * * *"
   workflow_dispatch: {}
 permissions:
   contents: write

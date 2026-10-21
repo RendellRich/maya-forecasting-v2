@@ -17,8 +17,11 @@ What one run does
      CAISO EDAM day-ahead and real-time PACE prices (prices.py).
 
 Buy day = a Mountain Standard Time calendar day (07:00 UTC to 06:00 UTC next day), bought at 16:00 UTC
-(10 am MDT / 9 am MST) the day before. Run it any time after about 16:15 UTC for the official forecast;
-an earlier run is marked provisional because the newest demand reading is not in yet.
+(10 am MDT / 9 am MST) the day before. The scheduled runs are 14:20, 15:00 and 15:40 UTC (GitHub can start them
+late); the last run before 16:00 UTC is the forecast of record, and it is LOCKED at the deadline: a later run never
+replaces it. A day with no forecast by the deadline is still issued by the next run, marked late. A run is marked
+provisional when the 8 am Mountain demand reading the models expect is not public yet (EIA posts with a lag); it
+then uses the newest reading available.
 
 Usage
   python live_forecast.py            normal daily run (writes live/)
@@ -394,7 +397,7 @@ def buy_day_hours(day):
 def next_buy_day(now_utc):
     """The day whose buy is the next one to be placed (or was placed today if before 16:00 UTC... see docstring)."""
     issue_today = now_utc.normalize() + pd.Timedelta(hours=ISSUE_HOUR_UTC)
-    issue_date = now_utc.normalize() if now_utc <= issue_today + pd.Timedelta(hours=4) else now_utc.normalize() + pd.Timedelta(days=1)
+    issue_date = now_utc.normalize() if now_utc < issue_today else now_utc.normalize() + pd.Timedelta(days=1)
     return issue_date + pd.Timedelta(days=1)
 
 
@@ -452,8 +455,9 @@ def verify():
 # ------------------------------- main run ----------------------------------------------------------
 def run(now_utc=None):
     t0 = time.time()
-    now_utc = pd.Timestamp.now("UTC").tz_localize(None).floor("h") if now_utc is None else pd.Timestamp(now_utc)
-    target_day = next_buy_day(now_utc)
+    now_exact = pd.Timestamp.now("UTC").tz_localize(None) if now_utc is None else pd.Timestamp(now_utc)
+    now_utc = now_exact.floor("h")          # data cut-off; deadline checks use the exact time
+    target_day = next_buy_day(now_exact)
     os.makedirs(LIVE, exist_ok=True)
     m, fc_bt = load_master()
     master_end = m[D].last_valid_index()
@@ -521,21 +525,24 @@ def run(now_utc=None):
     hist_live.to_parquet(os.path.join(LIVE, "history_live.parquet"))
 
     # --- forecast the live days. Past days come from the archive exactly as issued (never recomputed, so a retrained
-    #     model can never rewrite the track record). A day is (re)forecast only if it is not archived yet, or its buy
-    #     deadline has not passed (+4 h grace for the scheduled run).
+    #     model can never rewrite the track record). A day is (re)forecast only before its buy deadline (the last run
+    #     before 16:00 UTC is the forecast of record), or if it has no forecast at all yet (then marked late or backfill).
     F = build_features(df, fcw, v3=v3)
     live_days = pd.date_range(live_start_day, target_day, freq="D")
     archive = pd.read_parquet(ARCHIVE) if os.path.exists(ARCHIVE) else pd.DataFrame()
     archived_days = set(pd.to_datetime(archive.buy_day).dt.normalize()) if len(archive) else set()
     open_days = [d for d in live_days
-                 if d not in archived_days or now_utc <= d - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC + 4)]
+                 if d not in archived_days or now_exact < d - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC)]
     want = np.isin(idx, np.concatenate([buy_day_hours(d) for d in open_days])) if open_days else np.zeros(len(idx), bool)
     new = predict(F, want, models)
     new["buy_day"] = (new.index - pd.Timedelta(hours=7)).normalize()
     last_known_target = buy_day_hours(target_day)[0] - pd.Timedelta(hours=7 + 24 - ISSUE_HOUR_UTC + 2)
     provisional = bool(d_eia.index.max() < last_known_target) if len(d_eia) else True
     deadline = new.buy_day - pd.Timedelta(days=1) + pd.Timedelta(hours=ISSUE_HOUR_UTC)
-    new["issued"] = np.where(now_utc <= deadline + pd.Timedelta(hours=4), str(now_utc), "backfill (day-ahead weather, same rules)")
+    stamp = str(now_exact.floor("min"))
+    new["issued"] = np.where(now_exact < deadline, stamp,
+                             np.where(now_exact < new.buy_day + pd.Timedelta(hours=7), f"late: {stamp}, after the deadline",
+                                      "backfill (day-ahead weather, same rules)"))
     new["model_version"] = version
     keep = archive[~pd.to_datetime(archive.buy_day).dt.normalize().isin(open_days)] if len(archive) else archive
     raw = pd.concat([keep, new]).sort_index()
@@ -654,7 +661,7 @@ def run(now_utc=None):
                    p50_demand_MWh_total=round(float(tgt_rows.dem_P50.sum()), 0),
                    hours=int(tgt_rows.buy_net_MWh.notna().sum()), live_days_scored=int(len(track)),
                    weather="ECMWF IFS 0.25 (Open-Meteo), latest run for the buy day",
-                   note=("Provisional: run before the buy-time demand reading was published; the official run is after 16:15 UTC."
+                   note=("Provisional: the 8 am Mountain demand reading was not public yet, so the newest reading was used."
                          if provisional else ""))
     h.reset_index().round(2).to_csv(os.path.join(LIVE, "live_hourly.csv"), index=False)
     days.round(4).to_csv(os.path.join(LIVE, "live_days.csv"))

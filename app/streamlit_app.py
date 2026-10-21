@@ -731,7 +731,8 @@ On May to Oct 2026 prices, moving 1 MW for 4 hours a day saved about \\$108 per 
 pattern follows PACE's net load. Replace the 100 MW placeholder with their real average load, or their meter data later.
 
 **8. Live.** A daily job pulls PACE demand from EIA (free API) and ECMWF forecasts from Open-Meteo, rebuilds the Milford renewable
-estimate, forecasts the next buy day, recalibrates, and scores yesterday. The track record tab is that job run over every day since
+estimate, forecasts the next buy day, recalibrates, and scores yesterday. It runs three times before the deadline (GitHub can
+start jobs late); the last forecast before the deadline is locked, so the track record shows only what a buyer would really have had. The track record tab is that job run over every day since
 the training data ends.
 
 **9. Week-ahead outlook.** A separate model forecasts daily net-load totals 2 to 7 days out from ECMWF forecasts at those lead
