@@ -1,8 +1,8 @@
 strategy,key,hours,extra_per_MWh,extra_total,short_pct,volume_pct,worst_short,bill,mwh
-Perfect foresight,perfect,4194,0.0,0.0,0.0,0.0,0.0,759624506.3496,26236853.117
-No forecast (same hour 2 days ago),persistence,4194,0.1924,5048528.4459,51.3591,0.0035,2369.268,764673034.7955,26236853.117
-PACE as published,pace,4194,-0.0539,-1413153.6422,24.7973,5.4847,1383.44,758211352.7075,26236853.117
-Maya P95,maya_P95,4188,-0.1149,-3011068.127,4.8472,9.0331,681.5,755128322.4519,26202339.357
-"Maya daily rule (P95, P98 on Yellow/Red days)",maya_day_rule,4188,-0.1458,-3820975.7918,3.8443,9.6216,681.5,754318414.7871,26202339.357
-"Maya hourly rule (P95, P98 in high spike-risk hours)",maya_hour_rule,4188,-0.1356,-3552403.8247,3.8921,9.6848,681.5,754586986.7542,26202339.357
-Maya bid ladder (daily rule + extra to P98 if day-ahead is below expected real-time),maya_ladder,4188,-0.1736,-4549392.9348,2.9131,10.492,619.44,753589997.6442,26202339.357
+Perfect foresight,perfect,4193,0.0,0.0,0.0,0.0,0.0,759377184.3542,26232090.697
+No forecast (same hour 2 days ago),persistence,4193,0.1925,5049130.9729,51.3475,0.0053,2369.268,764426315.3271,26232090.697
+PACE as published,pace,4193,-0.0539,-1413766.6252,24.8032,5.4839,1383.44,757963417.729,26232090.697
+Maya P95,maya_P95,4187,-0.115,-3012168.1505,4.8483,9.0316,681.5,754879900.433,26197576.937
+"Maya daily rule (P95, P98 on Yellow/Red days)",maya_day_rule,4187,-0.1459,-3822075.8153,3.8452,9.6202,681.5,754069992.7682,26197576.937
+"Maya hourly rule (P95, P98 in high spike-risk hours)",maya_hour_rule,4187,-0.1356,-3553503.8482,3.893,9.6834,681.5,754338564.7353,26197576.937
+Maya bid ladder (daily rule + extra to P98 if day-ahead is below expected real-time),maya_ladder,4187,-0.1737,-4550492.9582,2.9138,10.4907,619.44,753341575.6252,26197576.937
